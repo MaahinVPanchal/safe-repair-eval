@@ -55,7 +55,8 @@ def chat_completion(base_url, api_key, model, prompt, timeout_s=120):
     return text, body.get("usage", {}), latency
 
 
-def probe(tasks, base_url, api_key, model, out_dir, trials=1):
+def probe(tasks, base_url, api_key, model, out_dir, trials=1,
+          provider_label="unverified-alias", endpoint_verified=False):
     """Runs trials per task, saving each raw transcript immediately."""
     os.makedirs(out_dir, exist_ok=True)
     saved = []
@@ -69,8 +70,8 @@ def probe(tasks, base_url, api_key, model, out_dir, trials=1):
                 "trial": i,
                 "model": model,
                 "base_url": base_url,
-                "provider_label": "unverified-alias",
-                "endpoint_verified": False,
+                "provider_label": provider_label,
+                "endpoint_verified": endpoint_verified,
                 "date_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "temperature": 0,
                 "prompt": prompt,
@@ -106,6 +107,10 @@ def main(argv=None):
     ap.add_argument("--base-url", default=os.environ.get("EVAL_BASE_URL", ""))
     ap.add_argument("--model", default=os.environ.get("EVAL_MODEL", ""))
     ap.add_argument("--api-key-env", default="EVAL_API_KEY", help="env var holding the API key")
+    ap.add_argument("--provider-label", default="unverified-alias",
+                    help="true provider identity for transcripts, e.g. ollama-local, groq, gemini-api. "
+                         "Labeling asserts you know the real provider (endpoint_verified=True); "
+                         "leave unset for gateways you have not verified.")
     args = ap.parse_args(argv)
 
     api_key = os.environ.get(args.api_key_env, "")
@@ -116,7 +121,9 @@ def main(argv=None):
         print("  python harness/runner.py --trials 3")
         return 2
     tasks = load_tasks(args.tasks)
-    probe(tasks, args.base_url, api_key, args.model, args.out, args.trials)
+    labeled = args.provider_label != "unverified-alias"
+    probe(tasks, args.base_url, api_key, args.model, args.out, args.trials,
+          provider_label=args.provider_label, endpoint_verified=labeled)
     return 0
 
 

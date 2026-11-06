@@ -25,6 +25,8 @@ def main(argv=None):
     ap.add_argument("--model", default=os.environ.get("EVAL_MODEL", ""))
     ap.add_argument("--api-key-env", default="EVAL_API_KEY")
     ap.add_argument("--trials", type=int, default=1)
+    ap.add_argument("--provider-label", default="unverified-alias",
+                    help="true provider identity, e.g. ollama-local, groq, gemini-api")
     ap.add_argument("--tasks", default=os.path.join(ROOT, "tasks"))
     ap.add_argument("--out", default=os.path.join(ROOT, "transcripts"))
     ap.add_argument("--results", default=os.path.join(ROOT, "results"))
@@ -51,7 +53,10 @@ def main(argv=None):
         sys.path.insert(0, ROOT)
         from harness.runner import probe as run_probe
         from harness.prompt_builder import load_tasks
-        run_probe(load_tasks(args.tasks), args.base_url, api_key, args.model, args.out, args.trials)
+        labeled = args.provider_label != "unverified-alias"
+        run_probe(load_tasks(args.tasks), args.base_url, api_key, args.model,
+                  args.out, args.trials, provider_label=args.provider_label,
+                  endpoint_verified=labeled)
         from harness.offline_grade import grade_dir
         grade_dir(args.out, args.tasks, args.results)
         return 0
