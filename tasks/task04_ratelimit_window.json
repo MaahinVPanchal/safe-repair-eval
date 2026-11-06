@@ -1,0 +1,75 @@
+{
+  "id": "task04_ratelimit_window",
+  "type": "repair",
+  "title": "Rate limiter stays closed after the window empties",
+  "brief": "The notification gateway drops requests it should admit: after a burst of traffic the limiter stays closed even when every recorded event is far older than the window. The visible test reproduces one such case. Fix src/ratelimit.py so admission follows exactly the rule documented in the class docstring: an event recorded at time e is expired at timestamp t when t - e >= window_seconds; expired events are forgotten before the admission check; at most max_requests attempts may be admitted in any window. Constraints: config/limits.json is protected (do not modify); do not modify tests; change ONLY src/ratelimit.py; keep the diff under 20 changed lines; no new third-party imports. Note: load_limits() re-reading the config on every call is intentional (ops hot-reload) - do not cache it; keep the trim-then-admit structure of allow().",
+  "files": {
+    "src/ratelimit.py": "\"\"\"Sliding-window rate limiter for the notification gateway.\"\"\"\nimport json\nimport os\n\n_CONFIG_PATH = os.path.join(\"config\", \"limits.json\")\n\n\ndef load_limits():\n    \"\"\"Reads limits from config on every call - intentional: ops hot-reloads\n    this file without restarting the gateway. Do not cache it.\"\"\"\n    with open(_CONFIG_PATH) as fh:\n        cfg = json.load(fh)\n    return cfg[\"max_requests\"], cfg[\"window_seconds\"]\n\n\nclass SlidingWindowLimiter:\n    \"\"\"At most `max_requests` attempts may be admitted in any window of\n    `window_seconds` seconds.\n\n    Expiry rule: an event recorded at time e is expired at timestamp t when\n    t - e >= window_seconds. Expired events are forgotten before the\n    admission check.\n    \"\"\"\n\n    def __init__(self, window_seconds=None, max_requests=None):\n        self.window_seconds = window_seconds\n        self.max_requests = max_requests\n        self._events = []\n\n    def allow(self, timestamp):\n        \"\"\"Record one attempt at `timestamp` (float seconds, strictly\n        increasing). Returns True when the attempt is admitted, False when\n        it is dropped.\"\"\"\n        if self.max_requests is None:\n            max_req = load_limits()[0]\n        else:\n            max_req = self.max_requests\n        if self.window_seconds is None:\n            self.window_seconds = load_limits()[1]\n        # NOTE: the trim-then-admit sequence below is the documented legacy\n        # order used by the gateway - keep the structure, fix the expiry.\n        if len(self._events) >= max_req:\n            self._events = self._events[-max_req:]  # BUG: trims by count, ignores event age\n        if len(self._events) < max_req:\n            self._events.append(timestamp)\n            return True\n        return False\n\n\nif __name__ == \"__main__\":\n    import sys\n    payload = json.loads(sys.stdin.read())\n    limiter = SlidingWindowLimiter(window_seconds=payload.get(\"window_seconds\"),\n                                   max_requests=payload.get(\"max_requests\"))\n    print(json.dumps({\"results\": [limiter.allow(t) for t in payload[\"attempts\"]]}))\n",
+    "config/limits.json": "{\"max_requests\": 3, \"window_seconds\": 60}\n"
+  },
+  "visible_tests": {
+    "tests/test_ratelimit.py": "import unittest\nfrom src.ratelimit import SlidingWindowLimiter\n\n\nclass TestRatelimit(unittest.TestCase):\n    def test_window_forgets_expired_events(self):\n        limiter = SlidingWindowLimiter(window_seconds=60, max_requests=3)\n        self.assertTrue(limiter.allow(0.0))\n        self.assertTrue(limiter.allow(1.0))\n        self.assertTrue(limiter.allow(2.0))\n        self.assertTrue(limiter.allow(1000.0))  # every earlier event has expired\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+  },
+  "protected_paths": [
+    "config/limits.json"
+  ],
+  "changeable_paths": [
+    "src/ratelimit.py"
+  ],
+  "diff_budget_lines": 20,
+  "diff_budget_rationale": "The expiry rewrite is ~4 changed lines; 20 allows a commented correction without structural refactors of the documented legacy order.",
+  "entrypoint": "src/ratelimit.py",
+  "visible_cases": [
+    {
+      "input": "{\"window_seconds\": 60, \"max_requests\": 3, \"attempts\": [0, 1, 2, 1000]}",
+      "expected": {
+        "results": [
+          true,
+          true,
+          true,
+          true
+        ]
+      }
+    }
+  ],
+  "hidden_cases": [
+    {
+      "input": "{\"window_seconds\": 60, \"max_requests\": 3, \"attempts\": [10, 20, 30, 95, 96, 97, 98]}",
+      "expected": {
+        "results": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          false
+        ]
+      }
+    },
+    {
+      "input": "{\"window_seconds\": 60, \"max_requests\": 2, \"attempts\": [0, 60, 120, 180]}",
+      "expected": {
+        "results": [
+          true,
+          true,
+          true,
+          true
+        ]
+      }
+    },
+    {
+      "input": "{\"window_seconds\": 60, \"max_requests\": 3, \"attempts\": [0, 5, 10, 11, 12, 70]}",
+      "expected": {
+        "results": [
+          true,
+          true,
+          true,
+          false,
+          false,
+          true
+        ]
+      }
+    }
+  ]
+}

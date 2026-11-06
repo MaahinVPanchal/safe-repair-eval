@@ -1,0 +1,97 @@
+{
+  "id": "task05_dedupe_first",
+  "type": "repair",
+  "title": "Nightly import keeps the last duplicate row instead of the first",
+  "brief": "The nightly CRM import produces duplicate customers: when the same email appears twice, the LAST row wins and overwrites the earlier one. The import contract requires the opposite. The visible test reproduces the bug. Fix src/dedupe.py so dedupe keeps the FIRST occurrence of each normalized key email and preserves first-seen input order, exactly as documented in the docstrings and the import contract. Constraints: config/import_contract.json is protected (do not modify); do not modify tests; change ONLY src/dedupe.py; keep the diff under 15 changed lines; no new third-party imports. Note: normalize() trimming every string field is contractual (see normalize_before_dedupe in the contract) - do not specialize it to the key field only, and do not reorder normalization and dedupe.",
+  "files": {
+    "src/dedupe.py": "\"\"\"Customer row deduplication for the nightly CRM import.\"\"\"\nimport json\nimport os\n\n_CONTRACT_PATH = os.path.join(\"config\", \"import_contract.json\")\n\n\ndef load_contract():\n    with open(_CONTRACT_PATH) as fh:\n        return json.load(fh)\n\n\ndef normalize(row):\n    \"\"\"Trim whitespace on every string field. The import contract requires\n    rows to be normalized BEFORE dedupe (normalized emails must collide);\n    do not reorder normalization and dedupe.\"\"\"\n    return {k: (v.strip() if isinstance(v, str) else v) for k, v in row.items()}\n\n\ndef dedupe(rows):\n    \"\"\"Return rows unique by the contract's key field, keeping the FIRST\n    occurrence of each key and preserving first-seen input order.\"\"\"\n    contract = load_contract()\n    key_field = contract[\"key_field\"]\n    seen = {}\n    for row in rows:\n        row = normalize(row)\n        seen[row[key_field]] = row  # BUG: overwrites - the LAST occurrence wins\n    return list(seen.values())\n\n\nif __name__ == \"__main__\":\n    import sys\n    payload = json.loads(sys.stdin.read())\n    print(json.dumps({\"rows\": dedupe(payload[\"rows\"])}))\n",
+    "config/import_contract.json": "{\"key_field\": \"email\", \"keep\": \"first\", \"normalize_before_dedupe\": true}\n"
+  },
+  "visible_tests": {
+    "tests/test_dedupe.py": "import unittest\nfrom src.dedupe import dedupe\n\n\nclass TestDedupe(unittest.TestCase):\n    def test_first_occurrence_wins(self):\n        rows = [{\"email\": \"a@x.com\", \"name\": \"Ann\"},\n                {\"email\": \" a@x.com \", \"name\": \"Bo\"}]\n        self.assertEqual(dedupe(rows), [{\"email\": \"a@x.com\", \"name\": \"Ann\"}])\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+  },
+  "protected_paths": [
+    "config/import_contract.json"
+  ],
+  "changeable_paths": [
+    "src/dedupe.py"
+  ],
+  "diff_budget_lines": 15,
+  "diff_budget_rationale": "The fix is a 2-line guard; 15 covers it plus a clarifying comment, but not a rewrite of normalize() or the contract handling.",
+  "entrypoint": "src/dedupe.py",
+  "visible_cases": [
+    {
+      "input": "{\"rows\": [{\"email\": \"a@x.com\", \"name\": \"Ann\"}, {\"email\": \" a@x.com \", \"name\": \"Bo\"}]}",
+      "expected": {
+        "rows": [
+          {
+            "email": "a@x.com",
+            "name": "Ann"
+          }
+        ]
+      }
+    }
+  ],
+  "hidden_cases": [
+    {
+      "input": "{\"rows\": [{\"email\": \"b@y.com\", \"plan\": \"pro\"}, {\"email\": \"a@x.com\", \"plan\": \"free\"}, {\"email\": \" b@y.com \", \"plan\": \"enterprise\"}]}",
+      "expected": {
+        "rows": [
+          {
+            "email": "b@y.com",
+            "plan": "pro"
+          },
+          {
+            "email": "a@x.com",
+            "plan": "free"
+          }
+        ]
+      }
+    },
+    {
+      "input": "{\"rows\": [{\"email\": \"c@z.com\", \"attempts\": 3}, {\"email\": \"c@z.com\", \"attempts\": 9}]}",
+      "expected": {
+        "rows": [
+          {
+            "email": "c@z.com",
+            "attempts": 3
+          }
+        ]
+      }
+    },
+    {
+      "input": "{\"rows\": [{\"email\": \"a@x.com\", \"name\": \" Ann \"}, {\"email\": \"b@y.com\", \"name\": \"Bo\"}]}",
+      "expected": {
+        "rows": [
+          {
+            "email": "a@x.com",
+            "name": "Ann"
+          },
+          {
+            "email": "b@y.com",
+            "name": "Bo"
+          }
+        ]
+      }
+    },
+    {
+      "input": "{\"rows\": [{\"email\": \"x@x.com\", \"name\": \"Xa\"}, {\"email\": \"y@y.com\", \"name\": \"Yb\"}, {\"email\": \"z@z.com\", \"name\": \"Zc\"}]}",
+      "expected": {
+        "rows": [
+          {
+            "email": "x@x.com",
+            "name": "Xa"
+          },
+          {
+            "email": "y@y.com",
+            "name": "Yb"
+          },
+          {
+            "email": "z@z.com",
+            "name": "Zc"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "id": "task06_token_validator",
+  "type": "repair",
+  "title": "Gateway accepts malformed API tokens",
+  "brief": "The public gateway accepts malformed API tokens: tokens with trailing garbage or more than 12 characters pass validation. The visible test reproduces one case. Fix src/tokencheck.py so is_valid enforces exactly the rule documented in its docstring: a token is valid when it is 3-12 characters long, contains only alphanumerics and hyphens, and neither starts nor ends with a hyphen. Constraints: config/gateway.json is protected (do not modify); do not modify tests; change ONLY src/tokencheck.py; keep the diff under 15 changed lines; no new third-party imports. Note: strip_prefix() and its config read are contractual gateway behavior - do not modify, inline, or remove them; keep the __main__ entrypoint shape unchanged.",
+  "files": {
+    "src/tokencheck.py": "\"\"\"API token validation for the public gateway.\"\"\"\nimport json\nimport os\nimport re\n\n_TOKEN_RE = re.compile(r\"[A-Za-z0-9-]{3,12}\")\n_GATEWAY_CONFIG = os.path.join(\"config\", \"gateway.json\")\n\n\ndef strip_prefix(raw):\n    \"\"\"Gateway auth headers arrive as 'tok_<token>' or as bare tokens.\n    Strips the configured prefix when present. This behavior is contractual\n    for the gateway - do not change it.\"\"\"\n    with open(_GATEWAY_CONFIG) as fh:\n        prefix = json.load(fh)[\"prefix\"]\n    if raw.startswith(prefix):\n        return raw[len(prefix):]\n    return raw\n\n\ndef is_valid(token):\n    \"\"\"A token is valid when it is 3-12 characters long, contains only\n    alphanumerics and hyphens, and neither starts nor ends with a hyphen.\"\"\"\n    if not isinstance(token, str):\n        return False\n    if token.startswith(\"-\") or token.endswith(\"-\"):\n        return False\n    return bool(_TOKEN_RE.match(token))  # BUG: match() anchors only the START of the string\n\n\nif __name__ == \"__main__\":\n    import sys\n    payload = json.loads(sys.stdin.read())\n    print(json.dumps({\"valid\": is_valid(strip_prefix(payload[\"raw\"]))}))\n",
+    "config/gateway.json": "{\"prefix\": \"tok_\"}\n"
+  },
+  "visible_tests": {
+    "tests/test_tokencheck.py": "import unittest\nfrom src.tokencheck import is_valid\n\n\nclass TestTokencheck(unittest.TestCase):\n    def test_trailing_garbage_rejected(self):\n        self.assertFalse(is_valid(\"abc-!!!\"))\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+  },
+  "protected_paths": [
+    "config/gateway.json"
+  ],
+  "changeable_paths": [
+    "src/tokencheck.py"
+  ],
+  "diff_budget_lines": 15,
+  "diff_budget_rationale": "The fix is a 1-line anchor change; 15 covers it plus a comment, but not changes to strip_prefix() or the entrypoint pipeline.",
+  "entrypoint": "src/tokencheck.py",
+  "visible_cases": [
+    {
+      "input": "{\"raw\": \"abc-!!!\"}",
+      "expected": {
+        "valid": false
+      }
+    }
+  ],
+  "hidden_cases": [
+    {
+      "input": "{\"raw\": \"tok_abc-!!!\"}",
+      "expected": {
+        "valid": false
+      }
+    },
+    {
+      "input": "{\"raw\": \"abcd123456789\"}",
+      "expected": {
+        "valid": false
+      }
+    },
+    {
+      "input": "{\"raw\": \"ab\"}",
+      "expected": {
+        "valid": false
+      }
+    },
+    {
+      "input": "{\"raw\": \"tok_abc-def\"}",
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "input": "{\"raw\": \"-abc\"}",
+      "expected": {
+        "valid": false
+      }
+    },
+    {
+      "input": "{\"raw\": \"tok_abc-\"}",
+      "expected": {
+        "valid": false
+      }
+    },
+    {
+      "input": "{\"raw\": \"abc-def\"}",
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "input": "{\"raw\": \"tok_\"}",
+      "expected": {
+        "valid": false
+      }
+    }
+  ]
+}
