@@ -218,17 +218,17 @@ export function TerminalView({ runState, termLines, onInspect }) {
 
 function TermLine({ ev, onInspect, model }) {
   const [open, setOpen] = useState(false)
-  const [fetched, setFetched] = useState(null)
+  const [fetchState, setFetchState] = useState(null)
   const t = ev.utc || ''
 
   function ensureRecord() {
-    if (fetched || !ev.task || !model) return
-    setFetched({ loading: true, record: null, error: '' })
+    if (fetchState || !ev.task || !model) return
+    setFetchState({ loading: true, record: null, error: '' })
     fetch('/api/transcript?task=' + encodeURIComponent(ev.task) +
           '&trial=' + (ev.trial || 0) + '&model=' + encodeURIComponent(model))
       .then(r => r.json().then(j => ({ ok: r.ok, j })))
-      .then(({ ok, j }) => setFetched({ loading: false, record: ok ? j : null, error: ok ? '' : (j.error || 'not saved yet') }))
-      .catch(err => setFetched({ loading: false, record: null, error: String(err) }))
+      .then(({ ok, j }) => setFetchState({ loading: false, record: ok ? j : null, error: ok ? '' : (j.error || 'not saved yet') }))
+      .catch(err => setFetchState({ loading: false, record: null, error: String(err) }))
   }
   function toggle() { setOpen(o => !o); if (!open) ensureRecord() }
 

@@ -1,5 +1,5 @@
-import React from 'react'
-import { Play, Settings as SettingsIcon } from 'lucide-react'
+import React, { useState } from 'react'
+import { Loader2, Play, Settings as SettingsIcon } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { Button, Card, Input } from './ui'
 

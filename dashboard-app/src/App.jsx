@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { XCircle } from 'lucide-react'
 import { cn } from './lib/utils'
 import { Button, Dot } from './components/ui'
 import { deltaVs, taskStatus } from './components/views'
@@ -339,7 +340,7 @@ export default function App() {
                   : 'border-line bg-card text-muted hover:text-fg'
               )}
               onClick={() => {
-                if (tb.id.startsWith('s')) {
+                if (/^s\d+$/.test(tb.id)) {
                   setScenarioIdx(Number(tb.id.slice(1)))
                   setView('results')
                 } else {
@@ -361,11 +362,11 @@ export default function App() {
         </div>
       )}
 
-      {view === 'settings' && (
-        <SettingsView creds={creds} onSave={saveCred} />
-      )}
-
       <ErrorBoundary>
+        {view === 'settings' && (
+          <SettingsView creds={creds} onSave={saveCred} />
+        )}
+
         {view === 'how' && (
         <HowItWorks
           providers={providers}
