@@ -49,13 +49,21 @@ def classify(res):
     return "failed"
 
 
-def grade_dir(transcripts_dir, tasks_dir, out_dir):
+def grade_dir(transcripts_dir, tasks_dir, out_dir, progress=None):
     """Grades every transcript JSON in transcripts_dir; writes summary.json
-    and evidence_table.md into out_dir. Returns the flat result rows."""
+    and evidence_table.md into out_dir. Returns the flat result rows.
+    progress: optional callback emitting export-start / grading / graded
+    events so UIs can show the grading phase live."""
     tasks = {t["id"]: t for t in load_tasks(tasks_dir)}
     executor = choose_executor()
+    paths = sorted(glob.glob(os.path.join(transcripts_dir, "*.json")))
+    if progress:
+        try:
+            progress({"kind": "export-start", "total": len(paths)})
+        except Exception:
+            pass
     rows = []
-    for path in sorted(glob.glob(os.path.join(transcripts_dir, "*.json"))):
+    for path in paths:
         try:
             with open(path, encoding="utf-8") as fh:
                 tr = json.load(fh)
@@ -72,7 +80,18 @@ def grade_dir(transcripts_dir, tasks_dir, out_dir):
                          "outcome": "unknown-task", "pass": False,
                          "reason": "no task with this id", "executed": False})
             continue
+        if progress:
+            try:
+                progress({"kind": "grading", "task": task["id"], "trial": tr.get("trial", 0)})
+            except Exception:
+                pass
         res = grader.grade(task, tr.get("response", ""), executor=executor)
+        if progress:
+            try:
+                progress({"kind": "graded", "task": task["id"], "trial": tr.get("trial", 0),
+                          "outcome": classify(res)})
+            except Exception:
+                pass
         rows.append({
             "task_id": task["id"],
             "task_type": task["type"],

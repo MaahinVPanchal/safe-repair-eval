@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from harness import runner as sra_runner  # noqa: E402
 from harness.prompt_builder import load_tasks  # noqa: E402
-from graders.sandbox_daytona import load_env_keys  # noqa: E402
+from graders import sandbox_daytona  # noqa: E402 (module: load_env_keys, sandbox_available)
 
 PORT = 8000
 TASKS = load_tasks(os.path.join(ROOT, "tasks"))
@@ -47,13 +47,19 @@ PROVIDERS = {
 
 
 def provider_status():
-    keys = load_env_keys()
+    keys = sandbox_daytona.load_env_keys()
     out = []
     for name, p in PROVIDERS.items():
         has_key = True if p["env"] is None else bool(keys.get(p["env"]))
         out.append({"name": name, "base_url": p["base_url"],
                     "has_key": has_key, "key_url": p["key_url"]})
     return out
+
+
+def sandbox_ready():
+    # load_env_keys re-reads .env on every call, so a freshly pasted key is
+    # picked up without restarting this server
+    return sandbox_daytona.sandbox_available()
 
 STATE = {
     "running": False,
@@ -86,8 +92,12 @@ def provider_for(base_url):
     return "hosted-unverified"
 
 
-def export_data():
-    """Re-export the graded data JSON and rebuild the static dashboard."""
+def export_data(progress=None):
+    """Re-grade all transcripts (optionally streaming progress events), then
+    rebuild the dashboard data and static page."""
+    from harness.offline_grade import grade_dir
+    grade_dir(TRANSCRIPTS_DIR, os.path.join(ROOT, "tasks"),
+              os.path.join(ROOT, "results"), progress=progress)
     for script in ("export_dashboard_json.py", "build_dashboard.py"):
         subprocess.run([sys.executable, os.path.join(ROOT, "tools", script)],
                        cwd=ROOT, capture_output=True)
@@ -125,7 +135,8 @@ def run_scenario(cfg):
                 "finished_utc": None,
                 "error": "",
             })
-        event("run-start", model=cfg["model"], trials=cfg["trials"])
+        event("run-start", model=cfg["model"], trials=cfg["trials"],
+              tasks=[t["id"] for t in TASKS])
 
         def progress(ev):
             if ev.get("kind") == "start" and ev.get("task"):
@@ -159,7 +170,8 @@ def run_scenario(cfg):
             progress=progress,
         )
         event("run-complete", transcripts_total=len(os.listdir(TRANSCRIPTS_DIR)))
-        export_data()
+        event("export-start", total=None)
+        export_data(progress=progress)
         event("export-done")
     except Exception as exc:
         STATE["error"] = "%s: %s" % (type(exc).__name__, exc)
@@ -203,7 +215,8 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/models":
             self._json({"models": ollama_models()})
         elif self.path == "/api/providers":
-            self._json({"providers": provider_status()})
+            self._json({"providers": provider_status(),
+                        "sandbox_available": sandbox_ready()})
         elif self.path.startswith("/api/transcript"):
             q = parse_qs(urlparse(self.path).query)
             task_id = (q.get("task") or [""])[0]
@@ -248,7 +261,7 @@ class Handler(BaseHTTPRequestHandler):
         if provider in PROVIDERS:
             p = PROVIDERS[provider]
             base_url = p["base_url"]
-            api_key = load_env_keys().get(p["env"], "") if p["env"] else "ollama"
+            api_key = sandbox_daytona.load_env_keys().get(p["env"], "") if p["env"] else "ollama"
             provider_label = provider
             if p["env"] and not api_key:
                 self._json({"error": "no %s in .env - add the key first (see %s)"

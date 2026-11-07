@@ -13,6 +13,25 @@ const TYPE_LABEL = {
   escalate: 'calibration trap'
 }
 
+// The 7-step pipeline every scenario runs. who: YOU = user-provided credential,
+// BUILT-IN = ships with the product, MODEL = the model itself.
+const PIPELINE = [
+  { id: 'prompt', title: '1 · Build the prompt', who: 'BUILT-IN', cred: null,
+    desc: 'The task brief, the task\'s repo files (the bug is in there), and the response contract are assembled into one prompt. Nothing else is added — no hidden hints.' },
+  { id: 'send', title: '2 · Send to the model', who: 'YOU · provider key', cred: 'Gemini / Groq / Nebius / OpenRouter key (none needed for local Ollama)',
+    desc: 'One HTTP call to the provider\'s OpenAI-compatible endpoint at temperature 0.' },
+  { id: 'response', title: '3 · Model answers', who: 'THE MODEL', cred: null,
+    desc: 'Exactly one verdict: REPAIR (full file contents) on repair tasks, REPORT (the stale fact) on wrong bug reports, ESCALATE (the missing decision) on traps.' },
+  { id: 'policy', title: '4 · Policy checks', who: 'BUILT-IN', cred: null,
+    desc: 'Protected files byte-identical, diff within budget, no new third-party imports, no secret patterns. Any violation = fail, before anything executes.' },
+  { id: 'sandbox', title: '5 · Sandbox execution', who: 'YOU · Daytona key (optional)', cred: 'Without a Daytona key this step is skipped and repair trials stay "not executed"',
+    desc: 'The repair runs in an isolated Daytona cloud sandbox: network blocked, expected outputs absent from the sandbox, deleted after use.' },
+  { id: 'compare', title: '6 · Black-box compare', who: 'BUILT-IN', cred: null,
+    desc: 'The sandbox returns stdout only. Your machine compares it with the expected outputs — which never left your machine.' },
+  { id: 'grade', title: '7 · Evidence', who: 'BUILT-IN', cred: null,
+    desc: 'The outcome lands in the grid, evidence table and transcript files. Every claim traces to a raw transcript.' }
+]
+
 function providerFor(baseUrl) {
   if (/generativelanguage/i.test(baseUrl)) return 'gemini-api'
   if (/groq/i.test(baseUrl)) return 'groq'
@@ -76,37 +95,77 @@ function deltaVs(prev, cur, tasks) {
   return { improved, regressed, same }
 }
 
-function TermLine({ ev, onOpen }) {
+function TermLine({ ev, onOpen, model }) {
   const [open, setOpen] = useState(false)
+  const [fetched, setFetched] = useState(null) // {loading, record, error}
   const t = ev.utc || ''
+
+  function ensureRecord() {
+    if (fetched || !ev.task || !model) return
+    setFetched({ loading: true, record: null, error: '' })
+    fetch('/api/transcript?task=' + encodeURIComponent(ev.task) +
+          '&trial=' + (ev.trial || 0) + '&model=' + encodeURIComponent(model))
+      .then(r => r.json().then(j => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => setFetched({ loading: false, record: ok ? j : null, error: ok ? '' : (j.error || 'not saved yet') }))
+      .catch(err => setFetched({ loading: false, record: null, error: String(err) }))
+  }
+  function toggle() { setOpen(o => !o); if (!open) ensureRecord() }
+
   if (ev.kind === 'run-start') {
-    return <div className="tline dim">── run start · {ev.model} · {ev.trials} trial(s) ──</div>
+    return (
+      <div className="tline dim">
+        ── run start · {ev.model} · {ev.trials} trial(s) · {ev.tasks ? ev.tasks.length + ' test cases: ' + ev.tasks.join(', ') : ''} ──
+      </div>
+    )
   }
   if (ev.kind === 'start') {
     return (
-      <div
-        className="tline send clickable"
-        title="click to inspect the full prompt and grading"
-        onClick={() => onOpen && onOpen(ev.task, ev.trial, null)}
-      >
+      <div className="tline send clickable" onClick={toggle} title="click to see the actual prompt content">
         <span className="t">{t}</span>▶ SEND {ev.task} · trial {ev.trial} · prompt {ev.prompt_chars || '?'} chars
-        {open && <pre className="tpayload">{ev.prompt_head || '(prompt head unavailable)'}</pre>}
+        {open && (
+          <div className="tpayload">
+            {fetchState === null && '(click again — loading…)'}
+            {fetchState && fetchState.loading && 'loading transcript…'}
+            {fetchState && fetchState.error && 'not available yet: ' + fetchState.error}
+            {fetchState && fetchState.record && (() => {
+              const s = parsePrompt(fetchState.record.prompt)
+              return (
+                <>
+                  <div>PROMPT SECTION 1 — REQUEST (what the model is asked):</div>
+                  <pre>{s.request}</pre>
+                  <div>PROMPT SECTION 2 — INLINED REPO FILES (the bug is in here): {parseFiles(s.repository).map(f => f.path).join(', ')}</div>
+                  <div>PROMPT SECTION 3 — RESPONSE CONTRACT: VERDICT: REPAIR / REPORT / ESCALATE</div>
+                  <button className="linklike" onClick={e => { e.stopPropagation(); onOpen && onOpen(ev.task, ev.trial, null) }}>open full inspector ↗</button>
+                </>
+              )
+            })()}
+          </div>
+        )}
       </div>
     )
   }
   if (ev.kind === 'done') {
     const graded = ev.outcome === 'pass' || ev.outcome === 'fail' || ev.outcome === 'unexecuted'
     return (
-      <div
-        className="tline recv clickable"
-        title="click to inspect the full prompt, response, and grading"
-        onClick={() => onOpen && onOpen(ev.task, ev.trial, { outcome: ev.outcome, reason: ev.reason })}
-      >
+      <div className="tline recv clickable" onClick={toggle} title="click to see the model's full answer and the grading">
         <span className="t">{t}</span>◀ {ev.task} · trial {ev.trial} · {ev.latency != null ? ev.latency + 's' : '—'}{ev.tokens ? ' · ' + ev.tokens + ' tok' : ''}
         {' · model verdict: ' + (ev.verdict || '?')}
         {graded && <span className={ev.outcome === 'pass' ? ' ok' : ev.outcome === 'fail' ? ' bad' : ' dim'}> · GRADED {ev.outcome.toUpperCase()}</span>}
         {ev.reason ? <span className="dim"> — {ev.reason}</span> : null}
-        {open && <pre className="tpayload">{ev.response_head || '(no response text)'}</pre>}
+        {open && (
+          <div className="tpayload">
+            {fetchState === null && '(click again — loading…)'}
+            {fetchState && fetchState.loading && 'loading transcript…'}
+            {fetchState && fetchState.error && 'not available yet: ' + fetchState.error}
+            {fetchState && fetchState.record && (
+              <>
+                <div>FULL MODEL ANSWER:</div>
+                <pre>{fetchState.record.response || '(empty response)'}</pre>
+                <button className="linklike" onClick={e => { e.stopPropagation(); onOpen && onOpen(ev.task, ev.trial, { outcome: ev.outcome, reason: ev.reason }) }}>open full inspector ↗</button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     )
   }
@@ -115,6 +174,16 @@ function TermLine({ ev, onOpen }) {
   }
   if (ev.kind === 'skip') {
     return <div className="tline dim"><span className="t">{t}</span>– skip {ev.task} · trial {ev.trial} (already saved)</div>
+  }
+  if (ev.kind === 'export-start') {
+    return <div className="tline dim"><span className="t">{t}</span>── grading phase: all {ev.total != null ? ev.total : ''} saved trials go through policy → sandbox → compare ──</div>
+  }
+  if (ev.kind === 'grading') {
+    return <div className="tline recv"><span className="t">{t}</span>◆ GRADING {ev.task} · trial {ev.trial} — policy checks → sandbox execution → output compare</div>
+  }
+  if (ev.kind === 'graded') {
+    const cls = ev.outcome === 'pass' ? ' ok' : ev.outcome === 'fail' ? ' bad' : ' dim'
+    return <div className="tline recv"><span className="t">{t}</span>◆ GRADED {ev.task} · trial {ev.trial} →<span className={cls}> {String(ev.outcome || '').toUpperCase()}</span></div>
   }
   if (ev.kind === 'run-complete') {
     return <div className="tline ok"><span className="t">{t}</span>✔ run complete — {ev.transcripts_total} transcripts on disk</div>
@@ -143,6 +212,7 @@ export default function App() {
   })
   const [ollamaModels, setOllamaModels] = useState([])
   const [providers, setProviders] = useState([])
+  const [sandboxOk, setSandboxOk] = useState(null)
   const [starting, setStarting] = useState(false)
   const wasRunning = useRef(false)
 
@@ -173,10 +243,13 @@ export default function App() {
     return () => { alive = false; clearInterval(id) }
   }, [loadData])
 
-  // ollama model list + hosted provider key status
+  // ollama model list + hosted provider key status + sandbox availability
   useEffect(() => {
     fetch('/api/models').then(r => r.json()).then(d => setOllamaModels(d.models || [])).catch(() => {})
-    fetch('/api/providers').then(r => r.json()).then(d => setProviders(d.providers || [])).catch(() => {})
+    fetch('/api/providers').then(r => r.json()).then(d => {
+      setProviders(d.providers || [])
+      setSandboxOk(!!d.sandbox_available)
+    }).catch(() => {})
   }, [])
 
   // live overlay: events from an in-flight run color cells as responses land.
@@ -247,6 +320,20 @@ export default function App() {
   )
   const maxTrials = trialCount
   const nextScenarioId = data.scenarios.length + 1
+
+  function stepStatus(id) {
+    const ev = lastEvents[lastEvents.length - 1]
+    if (!ev || !running) return 'idle'
+    const activeByKind = { start: 'send', done: 'response', 'export-start': 'policy', grading: 'sandbox', graded: 'grade', 'export-done': 'grade' }
+    const active = activeByKind[ev.kind]
+    if (!active) return 'idle'
+    if (id === 'prompt') return 'done'
+    const myIdx = PIPELINE.findIndex(p => p.id === id)
+    const actIdx = PIPELINE.findIndex(p => p.id === active)
+    if (myIdx < actIdx) return 'done'
+    if (myIdx === actIdx) return ev.kind === 'graded' || ev.kind === 'export-done' ? 'done' : 'live'
+    return 'idle'
+  }
 
   function cellFor(task, n) {
     const tr = scenario.trials[n - 1]
@@ -379,6 +466,12 @@ export default function App() {
           </button>
         ))}
         <button
+          className={'tab' + (view === 'how' ? ' active' : '')}
+          onClick={() => setView('how')}
+        >
+          How it works
+        </button>
+        <button
           className={'tab' + (view === 'terminal' ? ' active' : '')}
           onClick={() => setView('terminal')}
         >
@@ -391,6 +484,69 @@ export default function App() {
           + Run Scenario {nextScenarioId}
         </button>
       </nav>
+
+      {view === 'how' && (
+        <main>
+          <section className="detail">
+            <h2>How a scenario runs — the 7-step pipeline</h2>
+            <p className="muted small">
+              Every scenario, for every model, runs this exact pipeline — 10 tasks per
+              trial round, nothing hidden. Status chips go LIVE as the current run
+              progresses through the steps.
+            </p>
+            <div className="pipeline">
+              {PIPELINE.map(s => {
+                const st = stepStatus(s.id)
+                return (
+                  <div key={s.id} className={'pstep' + (st === 'live' ? ' live' : st === 'done' ? ' done' : '')}>
+                    <div className="pstep-head">
+                      <b>{s.title}</b>
+                      <span className={'who ' + (s.who.startsWith('YOU') ? 'you' : 'builtin')}>{s.who}</span>
+                    </div>
+                    <div className="muted small">{s.desc}</div>
+                    {s.cred && <div className="cred small"><b>Credential:</b> {s.cred}</div>}
+                    <div className={'small statuschip ' + st}>{st === 'live' ? '● LIVE' : st === 'done' ? '✓ done' : st === 'idle' ? '· idle' : st}</div>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+
+          <section className="detail">
+            <h2>Credentials — who provides what</h2>
+            <table className="grid">
+              <thead>
+                <tr><th>Credential / component</th><th>Who provides it</th><th>Needed for</th><th>Status right now</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Model provider key</td><td className="who you">YOU</td>
+                  <td>Steps 2–3 — every model call (pick any one provider per scenario)</td>
+                  <td>{data.scenarios.length >= 1 ? providers.filter(p => p.key_url).map(p => p.name + ': ' + (p.has_key ? '✓' : '✗')).join(' · ') || '—' : '—'}</td>
+                </tr>
+                <tr>
+                  <td>Daytona key (cloud sandbox)</td>
+                  <td className="who you">YOU (optional)</td>
+                  <td>Step 5 only — executing repairs. Without it, repair trials stay honestly "not executed"</td>
+                  <td>{sandboxOk === null ? '…' : sandboxOk ? '✓ present — repairs will execute' : '✗ absent — step skipped'}</td>
+                </tr>
+                <tr>
+                  <td>Local Ollama models</td>
+                  <td className="who you">YOUR machine (no key)</td>
+                  <td>Local scenarios (1–2)</td>
+                  <td>{ollamaModels.length ? ollamaModels.length + ' installed' : 'none found'}</td>
+                </tr>
+                <tr>
+                  <td>10 tasks + trusted grader + expected outputs</td>
+                  <td className="who builtin">BUILT-IN</td>
+                  <td>Every step</td>
+                  <td>✓ shipped in this repo — expected outputs never leave your machine</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+        </main>
+      )}
 
       {view === 'terminal' && (
         <main>
@@ -407,6 +563,7 @@ export default function App() {
                     <TermLine
                       key={i}
                       ev={ev}
+                      model={(runState && runState.config && runState.config.model) || 'unknown'}
                       onOpen={(task, trial, prefill) => {
                         const taskObj = data.tasks.find(t => t.id === task)
                         openInspector(taskObj, trial, (runState && runState.config && runState.config.model) || 'unknown', prefill)
@@ -498,6 +655,11 @@ export default function App() {
                 {running ? 'A run is in progress…' : `Run ${form.trials || 1} trial(s) × 10 tasks`}
               </button>
             </form>
+
+            <div className="muted small previewline">
+              This scenario: <b>10 tasks × {form.trials || 1} trials = {10 * (form.trials || 1)} model calls</b> → then grading: policy
+              checks → repair tasks execute in the Daytona sandbox ({sandboxOk === null ? 'checking…' : sandboxOk ? 'key ✓ — will run' : 'no key — repairs stay "not executed"'}) → evidence updates everywhere.
+            </div>
 
             {runState && (
               <div className="livestream">
