@@ -30,6 +30,12 @@ from harness.prompt_builder import build_prompt, load_tasks  # noqa: E402
 TRANSCRIPT_SCHEMA = "sra-transcript-v1"
 
 
+def _slug(model):
+    """Filesystem-safe slug for a model id, used in transcript filenames."""
+    out = "".join(ch if (ch.isalnum() or ch in "._-") else "-" for ch in model)
+    return out or "model"
+
+
 def chat_completion(base_url, api_key, model, prompt, timeout_s=120):
     """One chat completion. Returns (text, usage, latency_seconds)."""
     url = base_url.rstrip("/") + "/chat/completions"
@@ -63,7 +69,8 @@ def probe(tasks, base_url, api_key, model, out_dir, trials=1,
     for task in tasks:
         prompt = build_prompt(task)
         for i in range(1, trials + 1):
-            out_path = os.path.join(out_dir, "%s__trial%02d.json" % (task["id"], i))
+            out_path = os.path.join(out_dir, "%s__%s__trial%02d.json"
+                                    % (task["id"], _slug(model), i))
             if os.path.exists(out_path):
                 saved.append(out_path)
                 print("skip existing %s" % os.path.relpath(out_path))
