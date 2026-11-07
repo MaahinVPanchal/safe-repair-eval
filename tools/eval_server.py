@@ -29,6 +29,9 @@ from graders import sandbox_daytona  # noqa: E402 (module: load_env_keys, sandbo
 PORT = 8000
 TASKS = load_tasks(os.path.join(ROOT, "tasks"))
 TRANSCRIPTS_DIR = os.path.join(ROOT, "transcripts")
+ENV_FILE = os.path.join(ROOT, ".env")
+CREDENTIAL_KEYS = ["GEMINI_API_KEY", "GROQ_API_KEY", "NEBIUS_API_KEY",
+                   "OPENROUTER_API_KEY", "DAYTONA_API_KEY"]
 
 # Hosted model providers. Keys resolve SERVER-SIDE from .env/environment and
 # are never sent to the browser; the client only sees which providers are ready.
@@ -60,6 +63,39 @@ def sandbox_ready():
     # load_env_keys re-reads .env on every call, so a freshly pasted key is
     # picked up without restarting this server
     return sandbox_daytona.sandbox_available()
+
+
+def mask(value):
+    v = (value or "").strip()
+    if not v:
+        return None
+    return "…%s" % v[-4:] if len(v) > 4 else "…"
+
+
+def credentials_status():
+    keys = sandbox_daytona.load_env_keys()
+    return {k: {"present": k in keys, "masked": mask(keys.get(k))}
+            for k in CREDENTIAL_KEYS}
+
+
+def upsert_env(updates):
+    """Upsert KEY=VALUE lines in .env. Commented placeholders (# KEY=) are
+    replaced; unknown keys are appended at the end. Values are single-line."""
+    lines = open(ENV_FILE, encoding="utf-8").read().split("\n") if os.path.exists(ENV_FILE) else []
+    for key, value in updates.items():
+        value = str(value).strip().replace("\n", " ").replace("\r", " ")
+        replaced = False
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                stripped = stripped.lstrip("#").strip()
+            if stripped.startswith(key + "=") or stripped.startswith(key + " ="):
+                lines[i] = "%s=%s" % (key, value)
+                replaced = True
+        if not replaced:
+            lines.append("%s=%s" % (key, value))
+    with open(ENV_FILE, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(lines))
 
 STATE = {
     "running": False,
@@ -217,6 +253,8 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/providers":
             self._json({"providers": provider_status(),
                         "sandbox_available": sandbox_ready()})
+        elif self.path == "/api/credentials":
+            self._json({"credentials": credentials_status()})
         elif self.path.startswith("/api/transcript"):
             q = parse_qs(urlparse(self.path).query)
             task_id = (q.get("task") or [""])[0]
@@ -244,6 +282,21 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "not found"}, 404)
 
     def do_POST(self):
+        if self.path == "/api/credentials":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            except ValueError:
+                self._json({"error": "invalid JSON body"}, 400)
+                return
+            updates = {k: str(v) for k, v in (body.get("updates") or {}).items()
+                       if k in CREDENTIAL_KEYS and str(v).strip()}
+            if not updates:
+                self._json({"error": "no valid credential updates"}, 400)
+                return
+            upsert_env(updates)
+            self._json({"saved": sorted(updates), "credentials": credentials_status()})
+            return
         if self.path != "/api/run":
             self._json({"error": "not found"}, 404)
             return

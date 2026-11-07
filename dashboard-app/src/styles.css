@@ -179,3 +179,15 @@ pre.block { max-height: 260px; overflow: auto; }
 .statuschip.live { color: #c22730; }
 .statuschip.done { color: #116329; }
 .previewline { margin-top: 10px; }
+
+.credrow {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid #edeff2;
+}
+.credrow:last-of-type { border-bottom: none; }
+.credrow input {
+  flex: 0 1 280px; font: inherit; padding: 8px 10px;
+  border: 1px solid #c9ccd4; border-radius: 8px; background: #fff; color: #1b1c1f;
+}
+.credinfo { flex: 1 1 auto; min-width: 220px; }
+.oktext { color: #116329; }

@@ -95,6 +95,14 @@ function deltaVs(prev, cur, tasks) {
   return { improved, regressed, same }
 }
 
+const CRED_DEFS = [
+  { key: 'GROQ_API_KEY', label: 'Groq — model provider', hint: 'get a key: https://console.groq.com/keys' },
+  { key: 'GEMINI_API_KEY', label: 'Gemini — model provider', hint: 'get a key: https://aistudio.google.com/apikey' },
+  { key: 'NEBIUS_API_KEY', label: 'Nebius — model provider', hint: 'get a key: https://studio.nebius.ai' },
+  { key: 'OPENROUTER_API_KEY', label: 'OpenRouter — model provider', hint: 'get a key: https://openrouter.ai/keys' },
+  { key: 'DAYTONA_API_KEY', label: 'Daytona — execution sandbox (pipeline step 5)', hint: 'get a key: https://app.daytona.io/api' }
+]
+
 function TermLine({ ev, onOpen, model }) {
   const [open, setOpen] = useState(false)
   const [fetched, setFetched] = useState(null) // {loading, record, error}
@@ -213,6 +221,9 @@ export default function App() {
   const [ollamaModels, setOllamaModels] = useState([])
   const [providers, setProviders] = useState([])
   const [sandboxOk, setSandboxOk] = useState(null)
+  const [creds, setCreds] = useState({})
+  const [credDraft, setCredDraft] = useState({})
+  const [savedFlash, setSavedFlash] = useState({})
   const [starting, setStarting] = useState(false)
   const wasRunning = useRef(false)
 
@@ -251,6 +262,29 @@ export default function App() {
       setSandboxOk(!!d.sandbox_available)
     }).catch(() => {})
   }, [])
+
+  function fetchCreds() {
+    fetch('/api/credentials').then(r => r.json()).then(d => setCreds(d.credentials || {})).catch(() => {})
+  }
+
+  function saveCred(key) {
+    const value = credDraft[key]
+    if (!value) return
+    fetch('/api/credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates: { [key]: value } })
+    }).then(r => r.json()).then(d => {
+      if (d.credentials) setCreds(d.credentials)
+      setSavedFlash(f => ({ ...f, [key]: true }))
+      setCredDraft(dr => ({ ...dr, [key]: '' }))
+      // refresh provider/sandbox status so the whole UI reflects the new key
+      fetch('/api/providers').then(r => r.json()).then(x => {
+        setProviders(x.providers || [])
+        setSandboxOk(!!x.sandbox_available)
+      }).catch(() => {})
+    }).catch(() => {})
+  }
 
   // live overlay: events from an in-flight run color cells as responses land.
   // Only applied to the scenario whose model the run targets.
@@ -483,18 +517,65 @@ export default function App() {
           How it works
         </button>
         <button
+          className={'tab' + (view === 'how' ? ' active' : '')}
+          onClick={() => setView('how')}
+        >
+          How it works
+        </button>
+        <button
           className={'tab' + (view === 'terminal' ? ' active' : '')}
           onClick={() => setView('terminal')}
         >
           Terminal
         </button>
         <button
-          className={'tab' + (view === 'run' ? ' active' : '')}
-          onClick={() => setView('run')}
+          className={'tab' + (view === 'settings' ? ' active' : '')}
+          onClick={() => { setView('settings'); fetchCreds() }}
         >
-          + Run Scenario {nextScenarioId}
+          ⚙ Settings
         </button>
       </nav>
+
+      {view === 'settings' && (
+        <main>
+          <section className="detail">
+            <h2>⚙ Credentials — bring your own keys</h2>
+            <p className="muted small">
+              Keys are stored in the gitignored <code>.env</code> on your machine and
+              resolved server-side — they are never rendered back here, only their last
+              4 characters. Everything else (the 10 tasks, the trusted grader, the
+              expected outputs) is built in and needs no credentials.
+            </p>
+            {CRED_DEFS.map(c => (
+              <div className="credrow" key={c.key}>
+                <div className="credinfo">
+                  <b>{c.label}</b>
+                  <div className="muted small">
+                    status: {creds[c.key]
+                      ? (creds[c.key].present ? '✓ set (' + creds[c.key].masked + ')' : 'not set')
+                      : '…'}{' '}
+                    · {c.hint}
+                  </div>
+                </div>
+                <input
+                  type="password"
+                  placeholder="paste key…"
+                  value={credDraft[c.key] || ''}
+                  onChange={e => setCredDraft({ ...credDraft, [c.key]: e.target.value })}
+                />
+                <button className="runbtn small" disabled={!credDraft[c.key]} onClick={() => saveCred(c.key)}>
+                  Save
+                </button>
+                {savedFlash[c.key] && <span className="small oktext">saved ✓</span>}
+              </div>
+            ))}
+            <p className="muted small">
+              Saved keys appear as ✓ in the provider dropdown of the Run tab and turn on
+              sandbox execution automatically (Daytona). No restart needed.
+            </p>
+          </section>
+        </main>
+      )}
 
       {view === 'how' && (
         <main>
