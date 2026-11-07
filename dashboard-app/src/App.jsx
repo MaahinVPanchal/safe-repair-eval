@@ -14,6 +14,22 @@ function providerFor(baseUrl) {
   return 'hosted-unverified'
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null } }
+  static getDerivedStateFromError(error) { return { error } }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="mx-auto my-8 max-w-3xl rounded-xl border border-bad/50 bg-bad/10 p-4 text-sm">
+          <b>Render error — paste this to the agent:</b>
+          <pre className="mt-2 overflow-auto font-mono text-xs">{String(this.state.error)}</pre>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function App() {
   /* ── state ── */
   const [data, setData] = useState(null)
@@ -349,7 +365,8 @@ export default function App() {
         <SettingsView creds={creds} onSave={saveCred} />
       )}
 
-      {view === 'how' && (
+      <ErrorBoundary>
+        {view === 'how' && (
         <HowItWorks
           providers={providers}
           sandboxOk={sandboxOk}
@@ -468,6 +485,7 @@ export default function App() {
         onAudit={submitAudit}
         auditedFor={auditedFor}
       />
+      </ErrorBoundary>
     </div>
   )
 }
