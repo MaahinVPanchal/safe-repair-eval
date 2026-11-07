@@ -1,6 +1,10 @@
+# local secrets — never commit
+.env
+.env.local
+.env.*.local
+
 __pycache__/
 *.py[cod]
-.env
 .rebuild/
 .smoke/
 
