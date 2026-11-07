@@ -20,7 +20,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from graders import grader  # noqa: E402
-from harness.prompt_builder import load_tasks  # noqa: E402
+from harness.prompt_builder import build_prompt, load_tasks  # noqa: E402
 
 OUT_PATH = os.path.join(ROOT, "dashboard-app", "public", "data.json")
 
@@ -77,6 +77,7 @@ def build():
             trial = max(1, int(tr.get("trial", 1)))
         except (TypeError, ValueError):
             trial = 1
+        usage = tr.get("usage") or {}
         cell = {
             "task": task["id"],
             "trial": trial,
@@ -85,6 +86,8 @@ def build():
             "reason": res["reason"],
             "checks": res["checks"],
             "latency": tr.get("latency_s"),
+            "tokens": usage.get("total_tokens"),
+            "prompt_head": build_prompt(task)[:500],
             "error": tr.get("error", ""),
             "excerpt": response[:600],
         }

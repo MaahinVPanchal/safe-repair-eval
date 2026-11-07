@@ -45,6 +45,47 @@ function deltaVs(prev, cur, tasks) {
   return { improved, regressed, same }
 }
 
+function TermLine({ ev }) {
+  const [open, setOpen] = useState(false)
+  const t = ev.utc || ''
+  if (ev.kind === 'run-start') {
+    return <div className="tline dim">── run start · {ev.model} · {ev.trials} trial(s) · provider {ev.provider || 'auto'} ──</div>
+  }
+  if (ev.kind === 'start') {
+    return (
+      <div className="tline send clickable" onClick={() => setOpen(o => !o)}>
+        <span className="t">{t}</span>▶ SEND {ev.task} · trial {ev.trial} · prompt {ev.prompt_chars || '?'} chars
+        {open && <pre className="tpayload">{ev.prompt_head || '(prompt head unavailable)'}</pre>}
+      </div>
+    )
+  }
+  if (ev.kind === 'done') {
+    const graded = ev.outcome === 'pass' || ev.outcome === 'fail' || ev.outcome === 'unexecuted'
+    return (
+      <div className="tline recv clickable" onClick={() => setOpen(o => !o)}>
+        <span className="t">{t}</span>◀ {ev.task} · trial {ev.trial} · {ev.latency != null ? ev.latency + 's' : '—'}{ev.tokens ? ' · ' + ev.tokens + ' tok' : ''}
+        {' · model verdict: ' + (ev.verdict || '?')}
+        {graded && <span className={ev.outcome === 'pass' ? ' ok' : ev.outcome === 'fail' ? ' bad' : ' dim'}> · GRADED {ev.outcome.toUpperCase()}</span>}
+        {ev.reason ? <span className="dim"> — {ev.reason}</span> : null}
+        {open && <pre className="tpayload">{ev.response_head || '(no response text)'}</pre>}
+      </div>
+    )
+  }
+  if (ev.kind === 'skip') {
+    return <div className="tline dim"><span className="t">{t}</span>– skip {ev.task} · trial {ev.trial} (already saved)</div>
+  }
+  if (ev.kind === 'run-complete') {
+    return <div className="tline ok"><span className="t">{t}</span>✔ run complete — {ev.transcripts_total} transcripts on disk</div>
+  }
+  if (ev.kind === 'export-done') {
+    return <div className="tline ok"><span className="t">{t}</span>✔ dashboard data re-exported</div>
+  }
+  if (ev.kind === 'run-error') {
+    return <div className="tline bad"><span className="t">{t}</span>✗ run error: {ev.error}</div>
+  }
+  return null
+}
+
 export default function App() {
   const [data, setData] = useState(null)
   const [scenarioIdx, setScenarioIdx] = useState(0)
@@ -113,6 +154,13 @@ export default function App() {
     }
     return { m, maxT }
   }, [runState])
+
+  // terminal auto-scroll: fired when new events arrive or the tab opens
+  const termRef = useRef(null)
+  const eventsCount = runState ? (runState.events || []).length : 0
+  useEffect(() => {
+    if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight
+  }, [eventsCount, view])
 
   if (!data) return <div className="app muted">Loading graded evidence…</div>
 
@@ -211,12 +259,36 @@ export default function App() {
           </button>
         ))}
         <button
+          className={'tab' + (view === 'terminal' ? ' active' : '')}
+          onClick={() => setView('terminal')}
+        >
+          Terminal
+        </button>
+        <button
           className={'tab' + (view === 'run' ? ' active' : '')}
           onClick={() => setView('run')}
         >
           + Run Scenario {nextScenarioId}
         </button>
       </nav>
+
+      {view === 'terminal' && (
+        <main>
+          <section className="detail">
+            <h2>Run terminal</h2>
+            <p className="muted small">
+              What the runner sends, what the model answers, and how the trusted grader
+              judges it — one block per trial, live during a run. Click a line to expand
+              the prompt head or response head. Full raw payloads live in transcripts/.
+            </p>
+            <div className="terminal" ref={termRef}>
+              {lastEvents.length
+                ? lastEvents.map((ev, i) => <TermLine key={i} ev={ev} />)
+                : <div className="tline dim">no run events yet — launch one from the "+ Run Scenario" tab</div>}
+            </div>
+          </section>
+        </main>
+      )}
 
       {view === 'run' && (
         <main>
@@ -448,6 +520,12 @@ export default function App() {
                   and reported the mismatch instead of producing an answer. That gap is
                   exactly what this eval measures.
                 </p>
+              )}
+              {selected.cell.prompt_head && (
+                <>
+                  <p className="muted small">What was sent to the model (prompt head — full prompt in transcripts/):</p>
+                  <pre>{selected.cell.prompt_head}</pre>
+                </>
               )}
               <p className="muted small">Response excerpt (full text in transcripts/):</p>
               <pre>{selected.cell.excerpt || '(empty response)'}</pre>

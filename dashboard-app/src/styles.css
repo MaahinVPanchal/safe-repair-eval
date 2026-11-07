@@ -119,3 +119,26 @@ pre {
 .events .bad { color: #c22730; }
 
 footer { margin-top: 20px; border-top: 1px solid #e2e4e9; padding-top: 12px; }
+
+.terminal {
+  background: #0d1117; color: #c9d1d9; border-radius: 10px;
+  padding: 12px 14px; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+  max-height: 440px; overflow: auto; line-height: 1.45;
+}
+.tline { padding: 2px 0; white-space: pre-wrap; word-break: break-word; }
+.tline.clickable { cursor: pointer; }
+.tline.clickable:hover { background: #161b22; }
+.tline.send { color: #79c0ff; }
+.tline.recv { color: #c9d1d9; }
+.tline.ok { color: #2ea043; }
+.tline.bad { color: #f85149; }
+.tline.dim { color: #8b949e; }
+.tline .ok { color: #2ea043; }
+.tline .bad { color: #f85149; }
+.tline .dim { color: #8b949e; }
+.tline .t { color: #6e7681; margin-right: 8px; }
+.tpayload {
+  color: #8b949e; background: #161b22; border-left: 2px solid #30363d;
+  margin: 4px 0 6px 16px; padding: 6px 8px; white-space: pre-wrap; word-break: break-word;
+  font-size: 11px;
+}

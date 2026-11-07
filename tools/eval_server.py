@@ -72,10 +72,16 @@ def grade_saved(path):
     if task is None:
         return None
     res = grader.grade(task, tr.get("response", ""), executor=None)
+    parsed = grader.parse_response(tr.get("response", "") or "")
+    usage = tr.get("usage") or {}
     return {"outcome": ("pass" if res["pass"]
                         else "unexecuted" if "unexecuted" in res["reason"].lower()
                         else "fail"),
-            "reason": res["reason"][:140]}
+            "reason": res["reason"][:140],
+            "verdict": parsed["kind"],
+            "response_head": (tr.get("response", "") or "")[:400],
+            "latency": tr.get("latency_s"),
+            "tokens": usage.get("total_tokens")}
 
 
 def run_scenario(cfg):
@@ -91,6 +97,11 @@ def run_scenario(cfg):
         event("run-start", model=cfg["model"], trials=cfg["trials"])
 
         def progress(ev):
+            if ev.get("kind") == "start" and ev.get("task"):
+                task = next((t for t in TASKS if t["id"] == ev["task"]), None)
+                if task:
+                    ev["prompt_chars"] = len(sra_runner.build_prompt(task))
+                    ev["prompt_head"] = task["brief"][:220]
             if ev.get("kind") == "done" and ev.get("task"):
                 try:
                     path = os.path.join(
