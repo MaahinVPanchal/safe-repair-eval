@@ -63,6 +63,11 @@ def probe(tasks, base_url, api_key, model, out_dir, trials=1,
     for task in tasks:
         prompt = build_prompt(task)
         for i in range(1, trials + 1):
+            out_path = os.path.join(out_dir, "%s__trial%02d.json" % (task["id"], i))
+            if os.path.exists(out_path):
+                saved.append(out_path)
+                print("skip existing %s" % os.path.relpath(out_path))
+                continue
             record = {
                 "schema": TRANSCRIPT_SCHEMA,
                 "task_id": task["id"],
@@ -81,7 +86,6 @@ def probe(tasks, base_url, api_key, model, out_dir, trials=1,
                 "latency_s": None,
                 "error": "",
             }
-            out_path = os.path.join(out_dir, "%s__trial%02d.json" % (task["id"], i))
             try:
                 text, usage, latency = chat_completion(base_url, api_key, model, prompt)
                 record.update({
