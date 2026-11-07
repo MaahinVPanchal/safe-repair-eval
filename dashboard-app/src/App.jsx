@@ -159,6 +159,7 @@ export default function App() {
   }
 
   const maxTrials = trialCount
+  const nextScenarioId = data.scenarios.length + 1
 
   async function startRun(e) {
     e.preventDefault()
