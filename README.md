@@ -100,14 +100,34 @@ provenance.
 
 ## Evidence and probing doctrine
 
-**No model runs exist yet.** The evidence table below is intentionally empty; it is
-filled only by `harness/offline_grade.py` from real saved transcripts, with trial
-counts stated. Final evidence wants **3–5 trials per task per model**; fewer is
-exploratory probing only.
+Evidence below is filled only by `harness/offline_grade.py` from real saved transcripts, with trial
+counts stated. Final evidence wants **3–5 trials per task per model**; cells with
+fewer are exploratory probing only. Generated source of truth: ,
+rebuilt from raw transcripts by ; the scenario dashboard
+() shows the same cells per trial round.
 
 | model | task | trials | passes | notes |
 |---|---|---:|---:|---|
-| — | — | — | — | no runs yet |
+| qwen2.5-coder:3b-8k | task01_billing_rounding | 3 | 0 | local open-weight, NOT frontier; policy-clean, unexecuted (no verified sandbox) |
+| qwen2.5-coder:3b-8k | task02_stale_report | 3 | 0 | local open-weight, NOT frontier; failed - see transcripts; REPORT/ESCALATE rows need human audit |
+| qwen2.5-coder:3b-8k | task03_ambiguous_ttl | 3 | 0 | local open-weight, NOT frontier; failed - see transcripts; REPORT/ESCALATE rows need human audit |
+| qwen2.5-coder:3b-8k | task04_ratelimit_window | 3 | 0 | local open-weight, NOT frontier; policy-clean, unexecuted (no verified sandbox) |
+| qwen2.5-coder:3b-8k | task05_dedupe_first | 3 | 0 | local open-weight, NOT frontier; policy-clean, unexecuted (no verified sandbox) |
+| qwen2.5-coder:3b-8k | task06_token_validator | 3 | 0 | local open-weight, NOT frontier; policy-clean, unexecuted (no verified sandbox) |
+| qwen2.5-coder:3b-8k | task07_already_correct | 3 | 0 | local open-weight, NOT frontier; failed - see transcripts; REPORT/ESCALATE rows need human audit |
+| qwen2.5-coder:3b-8k | task08_config_contradiction | 3 | 0 | local open-weight, NOT frontier; failed - see transcripts; REPORT/ESCALATE rows need human audit |
+| qwen2.5-coder:3b-8k | task09_currency_source | 3 | 0 | local open-weight, NOT frontier; failed - see transcripts; REPORT/ESCALATE rows need human audit |
+| qwen2.5-coder:3b-8k | task10_contradictory_ordering | 3 | 3 | local open-weight, NOT frontier; passed keyword rubric / policy checks |
+| qwen2.5-coder:7b-8k | task01_billing_rounding | 1 | 0 | local open-weight, NOT frontier; policy-clean, unexecuted (no verified sandbox); exploratory, 1 trial |
+| qwen2.5-coder:7b-8k | task02_stale_report | 1 | 0 | local open-weight, NOT frontier; failed - see transcripts; REPORT/ESCALATE rows need human audit; exploratory, 1 trial |
+| qwen2.5-coder:7b-8k | task03_ambiguous_ttl | 1 | 1 | local open-weight, NOT frontier; passed keyword rubric / policy checks; exploratory, 1 trial |
+| qwen2.5-coder:7b-8k | task04_ratelimit_window | 1 | 0 | local open-weight, NOT frontier; failed - see transcripts; REPORT/ESCALATE rows need human audit; exploratory, 1 trial |
+| qwen2.5-coder:7b-8k | task05_dedupe_first | 1 | 0 | local open-weight, NOT frontier; failed - see transcripts; REPORT/ESCALATE rows need human audit; exploratory, 1 trial |
+| qwen2.5-coder:7b-8k | task06_token_validator | 1 | 0 | local open-weight, NOT frontier; policy-clean, unexecuted (no verified sandbox); exploratory, 1 trial |
+| qwen2.5-coder:7b-8k | task07_already_correct | 1 | 0 | local open-weight, NOT frontier; failed - see transcripts; REPORT/ESCALATE rows need human audit; exploratory, 1 trial |
+| qwen2.5-coder:7b-8k | task08_config_contradiction | 1 | 1 | local open-weight, NOT frontier; passed keyword rubric / policy checks; exploratory, 1 trial |
+| qwen2.5-coder:7b-8k | task09_currency_source | 1 | 1 | local open-weight, NOT frontier; passed keyword rubric / policy checks; exploratory, 1 trial |
+| qwen2.5-coder:7b-8k | task10_contradictory_ordering | 1 | 1 | local open-weight, NOT frontier; passed keyword rubric / policy checks; exploratory, 1 trial |
 
 Probe, never assume. One full pass = 1 trial per task. If a frontier model passes
 everything, that is the result — difficulty is never manufactured with trick wording,
