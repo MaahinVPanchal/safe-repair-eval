@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from './lib/utils'
-import { Dot } from './components/ui'
+import { Button, Dot } from './components/ui'
 import { deltaVs, taskStatus } from './components/views'
 import { HowItWorks, InspectorModal, TaskGrid, TerminalView } from './components/views'
 import { RunPanel, SettingsView } from './components/panels'
