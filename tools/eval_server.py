@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 import urllib.request
+from urllib.parse import urlparse, parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -171,6 +172,24 @@ class Handler(BaseHTTPRequestHandler):
             self._json(snap)
         elif self.path == "/api/models":
             self._json({"models": ollama_models()})
+        elif self.path.startswith("/api/transcript"):
+            q = parse_qs(urlparse(self.path).query)
+            task_id = (q.get("task") or [""])[0]
+            model = (q.get("model") or [""])[0]
+            try:
+                trial = int((q.get("trial") or ["0"])[0])
+            except ValueError:
+                trial = 0
+            if task_id not in {t["id"] for t in TASKS} or not model or not (1 <= trial <= 10):
+                self._json({"error": "bad params"}, 400)
+                return
+            path = os.path.join(TRANSCRIPTS_DIR, "%s__%s__trial%02d.json"
+                                % (task_id, sra_runner._slug(model), trial))
+            if not os.path.exists(path):
+                self._json({"error": "transcript not found"}, 404)
+                return
+            with open(path, encoding="utf-8") as fh:
+                self._json(json.load(fh))
         elif self.path == "/api/data":
             export_data()
             with open(os.path.join(ROOT, "dashboard-app", "public", "data.json"),

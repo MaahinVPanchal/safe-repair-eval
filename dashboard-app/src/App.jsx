@@ -20,6 +20,37 @@ function providerFor(baseUrl) {
   return 'hosted-unverified'
 }
 
+function slugify(model) {
+  return (String(model || 'unknown')).replace(/[^A-Za-z0-9._-]/g, '-') || 'model'
+}
+
+// Split a built prompt into its labeled sections for the inspector.
+function parsePrompt(prompt) {
+  const p = String(prompt || '')
+  const iReq = p.indexOf('## Request')
+  const iRepo = p.indexOf('## Repository (inlined)')
+  const iContract = p.indexOf('## Required response format')
+  if (iReq < 0 || iRepo < 0 || iContract < 0) {
+    return { header: '', request: p, repository: '', contract: '', raw: true }
+  }
+  return {
+    header: p.slice(0, iReq).trim(),
+    request: p.slice(iReq + '## Request'.length, iRepo).trim(),
+    repository: p.slice(iRepo + '## Repository (inlined)'.length, iContract).trim(),
+    contract: p.slice(iContract + '## Required response format'.length).trim()
+  }
+}
+
+function parseFiles(repoText) {
+  const files = []
+  const re = /===== FILE: (.+?) =====\n([\s\S]*?)===== END FILE =====/g
+  let m
+  while ((m = re.exec(repoText)) !== null) {
+    files.push({ path: m[1], content: m[2].replace(/\n$/, '') })
+  }
+  return files
+}
+
 // Task status within a scenario: pass if any trial passed, else fail if any
 // trial failed, else unexecuted if any trial was policy-clean but not run.
 function taskStatus(scenario, taskId) {
@@ -45,15 +76,19 @@ function deltaVs(prev, cur, tasks) {
   return { improved, regressed, same }
 }
 
-function TermLine({ ev }) {
+function TermLine({ ev, onOpen }) {
   const [open, setOpen] = useState(false)
   const t = ev.utc || ''
   if (ev.kind === 'run-start') {
-    return <div className="tline dim">── run start · {ev.model} · {ev.trials} trial(s) · provider {ev.provider || 'auto'} ──</div>
+    return <div className="tline dim">── run start · {ev.model} · {ev.trials} trial(s) ──</div>
   }
   if (ev.kind === 'start') {
     return (
-      <div className="tline send clickable" onClick={() => setOpen(o => !o)}>
+      <div
+        className="tline send clickable"
+        title="click to inspect the full prompt and grading"
+        onClick={() => onOpen && onOpen(ev.task, ev.trial, null)}
+      >
         <span className="t">{t}</span>▶ SEND {ev.task} · trial {ev.trial} · prompt {ev.prompt_chars || '?'} chars
         {open && <pre className="tpayload">{ev.prompt_head || '(prompt head unavailable)'}</pre>}
       </div>
@@ -62,7 +97,11 @@ function TermLine({ ev }) {
   if (ev.kind === 'done') {
     const graded = ev.outcome === 'pass' || ev.outcome === 'fail' || ev.outcome === 'unexecuted'
     return (
-      <div className="tline recv clickable" onClick={() => setOpen(o => !o)}>
+      <div
+        className="tline recv clickable"
+        title="click to inspect the full prompt, response, and grading"
+        onClick={() => onOpen && onOpen(ev.task, ev.trial, { outcome: ev.outcome, reason: ev.reason })}
+      >
         <span className="t">{t}</span>◀ {ev.task} · trial {ev.trial} · {ev.latency != null ? ev.latency + 's' : '—'}{ev.tokens ? ' · ' + ev.tokens + ' tok' : ''}
         {' · model verdict: ' + (ev.verdict || '?')}
         {graded && <span className={ev.outcome === 'pass' ? ' ok' : ev.outcome === 'fail' ? ' bad' : ' dim'}> · GRADED {ev.outcome.toUpperCase()}</span>}
@@ -92,8 +131,8 @@ function TermLine({ ev }) {
 export default function App() {
   const [data, setData] = useState(null)
   const [scenarioIdx, setScenarioIdx] = useState(0)
-  const [view, setView] = useState('results') // results | run
-  const [selected, setSelected] = useState(null)
+  const [view, setView] = useState('results')
+  const [inspector, setInspector] = useState(null)
   const [runState, setRunState] = useState(null)
   const [form, setForm] = useState({
     baseUrl: 'http://localhost:11434/v1',
@@ -158,14 +197,13 @@ export default function App() {
     return { m, maxT }
   }, [runState])
 
-  // terminal auto-scroll: fired when new events arrive or the tab opens
+  // terminal auto-scroll + skip collapsing
   const termRef = useRef(null)
   const eventsCount = runState ? (runState.events || []).length : 0
   useEffect(() => {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight
   }, [eventsCount, view])
 
-  // collapse the wall of "already saved" skips into one honest line
   const termLines = useMemo(() => {
     const all = runState ? (runState.events || []) : []
     const out = []
@@ -190,13 +228,14 @@ export default function App() {
   const delta = prev && scenario ? deltaVs(prev, scenario, data.tasks) : null
   const running = runState ? runState.running : false
   const lastEvents = runState ? (runState.events || []).slice(-10) : []
-
   const liveActive = runState && runState.running && runState.config &&
     scenario && runState.config.model === scenario.model
   const trialCount = Math.max(
     data.scenarios.reduce((mx, s) => Math.max(mx, s.trials.length), 1),
     liveActive ? live.maxT : 0
   )
+  const maxTrials = trialCount
+  const nextScenarioId = data.scenarios.length + 1
 
   function cellFor(task, n) {
     const tr = scenario.trials[n - 1]
@@ -208,6 +247,27 @@ export default function App() {
     }
     if (lv && lv.start) return { state: 'live-start', cell: null }
     return { state: 'miss', cell: null }
+  }
+
+  async function openInspector(task, trial, model, prefill) {
+    if (!task) return
+    setInspector({ task, trial, model, prefill: prefill || null, record: null, loading: true, error: '' })
+    setView('results')
+    try {
+      const res = await fetch('/api/transcript?task=' + encodeURIComponent(task.id) +
+        '&trial=' + trial + '&model=' + encodeURIComponent(model))
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setInspector(ins => ins && { ...ins, loading: false, error: body.error || ('HTTP ' + res.status) })
+        return
+      }
+      const record = await res.json()
+      setInspector(ins => ins && ins.task.id === task.id && ins.trial === trial
+        ? { ...ins, loading: false, record }
+        : ins)
+    } catch (err) {
+      setInspector(ins => ins && { ...ins, loading: false, error: String(err) })
+    }
   }
 
   async function quickRun() {
@@ -226,9 +286,6 @@ export default function App() {
       setStarting(false)
     }
   }
-
-  const maxTrials = trialCount
-  const nextScenarioId = data.scenarios.length + 1
 
   async function startRun(e) {
     e.preventDefault()
@@ -250,6 +307,26 @@ export default function App() {
     } finally {
       setStarting(false)
     }
+  }
+
+  const gradedOf = (prefill, record) => {
+    if (prefill && prefill.outcome) {
+      return {
+        outcome: prefill.outcome,
+        reason: prefill.reason || '',
+        checks: {},
+        verdict: prefill.verdict || (record ? String(record.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—' : '—')
+      }
+    }
+    if (record) {
+      return {
+        outcome: (String(record.response || '').match(/VERDICT:/) ? 'unexecuted' : 'fail'),
+        reason: 'graded summary appears after export — see transcripts/' + (record.task_id || ''),
+        checks: {},
+        verdict: String(record.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—'
+      }
+    }
+    return null
   }
 
   return (
@@ -274,7 +351,7 @@ export default function App() {
           <button
             key={s.id}
             className={'tab' + (i === scenarioIdx && view === 'results' ? ' active' : '')}
-            onClick={() => { setScenarioIdx(i); setView('results'); setSelected(null) }}
+            onClick={() => { setScenarioIdx(i); setView('results'); setInspector(null) }}
           >
             Scenario {s.id} · {s.model}
           </button>
@@ -299,12 +376,21 @@ export default function App() {
             <h2>Run terminal</h2>
             <p className="muted small">
               What the runner sends, what the model answers, and how the trusted grader
-              judges it — one block per trial, live during a run. Click a line to expand
-              the prompt head or response head. Full raw payloads live in transcripts/.
+              judges it — one block per trial, live during a run. Click a SEND or
+              RESPONSE line to open the full prompt, response, and grading.
             </p>
             <div className="terminal" ref={termRef}>
               {termLines.length
-                ? termLines.map((ev, i) => <TermLine key={i} ev={ev} />)
+                ? termLines.map((ev, i) => (
+                    <TermLine
+                      key={i}
+                      ev={ev}
+                      onOpen={(task, trial, prefill) => {
+                        const taskObj = data.tasks.find(t => t.id === task)
+                        openInspector(taskObj, trial, (runState && runState.config && runState.config.model) || 'unknown', prefill)
+                      }}
+                    />
+                  ))
                 : <div className="tline dim">no run events yet — launch one from the "+ Run Scenario" tab</div>}
             </div>
           </section>
@@ -387,7 +473,8 @@ export default function App() {
                       <span className="muted">{ev.utc}</span>{' '}
                       {ev.kind === 'start' && <span>▶ {ev.task} · trial {ev.trial}</span>}
                       {ev.kind === 'done' && <span className={ev.outcome === 'error' ? 'bad' : 'ok'}>■ {ev.task} · trial {ev.trial} · {ev.outcome}</span>}
-                      {ev.kind === 'skip' && <span className="muted">– skip {ev.task} · trial {ev.trial} (already saved)</span>}
+                      {ev.kind === 'skips' && <span className="muted">– {ev.count} already-saved trials skipped</span>}
+                      {ev.kind === 'skip' && <span className="muted">– skip {ev.task} · trial {ev.trial}</span>}
                       {ev.kind === 'run-complete' && <span className="ok">run complete ({ev.transcripts_total} transcripts)</span>}
                       {ev.kind === 'export-done' && <span className="ok">dashboard data re-exported</span>}
                       {ev.kind === 'run-error' && <span className="bad">run error: {ev.error}</span>}
@@ -471,7 +558,7 @@ export default function App() {
                   <td className="small expected">{t.expected}</td>
                   <td className="center" colSpan={Math.max(maxTrials, 1)}>
                     <div className="cells" style={{ gridTemplateColumns: `repeat(${Math.max(maxTrials, 1)}, 52px)` }}>
-                      {Array.from({ length: Math.max(maxTrials, 1) }, (_, i) => i + 1).map(n => {
+                      {Array.from({ length: Math.max(maxTrials, 1) }, (_, i2) => i2 + 1).map(n => {
                         const { state, cell } = cellFor(t, n)
                         if (state === 'live-start') {
                           return <button key={n} className="cell live" title={`Trial ${n}: probing now…`}>◌</button>
@@ -482,8 +569,8 @@ export default function App() {
                           <button
                             key={n}
                             className={c ? st.cls + ' clickable' : 'cell notrun'}
-                            title={c ? `Trial ${n}: ${st.label} — ${c.reason}` : `Trial ${n}: not run`}
-                            onClick={() => c && setSelected({ task: t, cell: c, trial: n })}
+                            title={c ? `Trial ${n}: ${st.label} — ${c.reason}` : `Trial ${n}: not run — click nothing to see`}
+                            onClick={() => c && openInspector(t, n, scenario.model, { outcome: c.outcome, reason: c.reason, checks: c.checks, verdict: c.verdict })}
                           >
                             {c ? st.sym : '—'}
                           </button>
@@ -496,62 +583,105 @@ export default function App() {
             </tbody>
           </table>
 
-          {selected && (
-            <section className="detail" aria-live="polite">
-              <h2>
-                {selected.task.title}{' '}
-                <span className="muted">— trial {selected.trial} · {scenario.model}</span>
-              </h2>
-              <div className="kv">
-                <span className={'badge ' + (OUT[selected.cell.outcome] ? selected.cell.outcome : 'fail')}>
-                  {(OUT[selected.cell.outcome] || { label: selected.cell.outcome || 'ungraded' }).label}
-                </span>
-                <span>model verdict: <b>{selected.cell.verdict}</b></span>
-                {selected.cell.latency != null && <span>{selected.cell.latency}s</span>}
-              </div>
-              <p><b>Grader:</b> {selected.cell.reason}</p>
-              {selected.cell.error && <p className="bad">Endpoint error: {selected.cell.error}</p>}
-              <p>
-                <b>Checks:</b>{' '}
-                {Object.keys(selected.cell.checks || {}).length === 0
-                  ? 'none (no policy checks for this response type)'
-                  : Object.entries(selected.cell.checks).map(([k, v]) => (
-                      <span key={k} className={'check ' + (v ? 'ok' : 'bad')}>
-                        {k}: {v ? 'ok' : 'FAILED'}
-                      </span>
-                    ))}
-              </p>
-              <p className="muted small">
-                What a correct answer looks like: {selected.task.expected}.{' '}
-                {selected.task.probes}
-              </p>
-              {selected.cell.outcome === 'unexecuted' && (
-                <p className="muted small">
-                  Read gray as three steps: (1) the model did produce a repair — see it in
-                  the excerpt below; (2) every policy check passed (protected files
-                  untouched, diff within budget, imports clean); (3) tests were never run
-                  because no verified sandbox exists — so it stays gray: promising, but
-                  unproven.
-                </p>
-              )}
-              {selected.cell.outcome === 'fail' && selected.task.type !== 'repair' && (
-                <p className="muted small">
-                  Calibration failure: the model answered "{selected.cell.verdict}" but the
-                  task needed {selected.task.type.toUpperCase()} — it should have stopped
-                  and reported the mismatch instead of producing an answer. That gap is
-                  exactly what this eval measures.
-                </p>
-              )}
-              {selected.cell.prompt_head && (
+          <section className="detail" aria-live="polite">
+            {!inspector && (
+              <span className="muted">Select a cell (or a SEND/RESPONSE line in the Terminal) to see the full prompt that was sent, the model's complete answer, and how the grader judged it.</span>
+            )}
+            {inspector && inspector.loading && (
+              <span className="muted">Loading transcript…</span>
+            )}
+            {inspector && inspector.error && (
+              <span className="bad">Transcript error: {inspector.error}</span>
+            )}
+            {inspector && inspector.record && (() => {
+              const rec = inspector.record
+              const sections = parsePrompt(rec.prompt)
+              const files = parseFiles(sections.repository)
+              const graded = gradedOf(inspector.prefill, rec) || {}
+              const responseVerdict = String(rec.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—'
+              return (
                 <>
-                  <p className="muted small">What was sent to the model (prompt head — full prompt in transcripts/):</p>
-                  <pre>{selected.cell.prompt_head}</pre>
+                  <h2>
+                    {inspector.task.title}{' '}
+                    <span className="muted">— trial {inspector.trial} · {inspector.model}</span>
+                  </h2>
+                  <div className="kv">
+                    <span className={'badge ' + (OUT[graded.outcome] ? graded.outcome : 'fail')}>
+                      {(OUT[graded.outcome] || { label: graded.outcome || 'ungraded' }).label}
+                    </span>
+                    <span>model verdict: <b>{graded.verdict}</b></span>
+                    <span>expected: <b>{inspector.task.type.toUpperCase()}</b></span>
+                    {rec.latency_s != null && <span>{rec.latency_s}s</span>}
+                    {rec.usage && rec.usage.total_tokens ? <span>{rec.usage.total_tokens} tokens</span> : null}
+                  </div>
+
+                  <h3>1 · What was sent to the model</h3>
+                  <div className="muted small">
+                    POST <code>{rec.base_url}/chat/completions</code> · model <code>{rec.model}</code> ·
+                    temperature <code>{String(rec.temperature)}</code> ·{' '}
+                    {rec.prompt.length} chars · sha256 <code>{String(rec.prompt_sha256).slice(0, 16)}…</code> ·{' '}
+                    sent {rec.date_utc}
+                  </div>
+                  <pre className="block">{sections.request}</pre>
+                  <details className="raw">
+                    <summary>Inlined repository files ({files.length}) — click to expand each</summary>
+                    {files.map(f => (
+                      <details key={f.path} className="fileblock">
+                        <summary><code>{f.path}</code></summary>
+                        <pre>{f.content}</pre>
+                      </details>
+                    ))}
+                  </details>
+                  <details className="raw">
+                    <summary>Response contract the model must follow</summary>
+                    <pre>{sections.contract}</pre>
+                  </details>
+                  <details className="raw">
+                    <summary>Show the full raw prompt ({rec.prompt.length} chars)</summary>
+                    <pre>{rec.prompt}</pre>
+                  </details>
+
+                  <h3>2 · What the model answered</h3>
+                  {rec.error && <p className="bad">Endpoint error: {rec.error}</p>}
+                  <pre>{rec.response || '(empty response)'}</pre>
+
+                  <h3>3 · How the grader judged it</h3>
+                  <p><b>Grader:</b> {graded.reason || '—'}</p>
+                  <p>
+                    <b>Checks:</b>{' '}
+                    {Object.keys(graded.checks || {}).length === 0
+                      ? 'see section 2 — grading summary lands with the export for live runs'
+                      : Object.entries(graded.checks).map(([k, v]) => (
+                          <span key={k} className={'check ' + (v ? 'ok' : 'bad')}>
+                            {k}: {v ? 'ok' : 'FAILED'}
+                          </span>
+                        ))}
+                  </p>
+                  {graded.outcome === 'unexecuted' && (
+                    <p className="muted small">
+                      Read gray as three steps: (1) the model did produce a repair — see it in
+                      its answer above; (2) every policy check passed (protected files
+                      untouched, diff within budget, imports clean); (3) tests were never run
+                      because no verified sandbox exists — so it stays gray: promising, but
+                      unproven.
+                    </p>
+                  )}
+                  {graded.outcome === 'fail' && inspector.task.type !== 'repair' && (
+                    <p className="muted small">
+                      Calibration failure: the model answered "{graded.verdict}" but the task
+                      needed {inspector.task.type.toUpperCase()} — it should have stopped and
+                      reported the mismatch instead of producing an answer. That gap is exactly
+                      what this eval measures.
+                    </p>
+                  )}
+                  <p className="muted small">
+                    What a correct answer looks like: {inspector.task.expected}. Full raw
+                    payloads: <code>transcripts/{inspector.task.id}__{slugify(inspector.model)}__trial{String(inspector.trial).padStart(2, '0')}.json</code>
+                  </p>
                 </>
-              )}
-              <p className="muted small">Response excerpt (full text in transcripts/):</p>
-              <pre>{selected.cell.excerpt || '(empty response)'}</pre>
-            </section>
-          )}
+              )
+            })()}
+          </section>
 
           <section className="changes">
             <h2>Changes between scenarios</h2>
