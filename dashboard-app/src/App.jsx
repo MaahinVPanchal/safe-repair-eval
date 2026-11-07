@@ -392,6 +392,8 @@ export default function App() {
       if (form.provider === 'custom') {
         payload.base_url = form.baseUrl
         payload.api_key = form.apiKey
+      } else if (form.provider !== 'ollama') {
+        payload.api_key = form.apiKey // optional override; server falls back to .env
       }
       const res = await fetch('/api/run', {
         method: 'POST',
@@ -414,8 +416,17 @@ export default function App() {
     ollama: ollamaModels[0] || 'qwen2.5-coder:3b-8k',
     custom: 'model id for your custom endpoint'
   }
+  const SUGGESTED = {
+    gemini: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+    groq: ['llama-3.3-70b-versatile', 'deepseek-r1-distill-llama-70b', 'llama-3.1-8b-instant'],
+    nebius: ['meta-llama/Meta-Llama-3.3-70B-Instruct', 'deepseek-ai/DeepSeek-R1'],
+    openrouter: ['deepseek/deepseek-r1:free', 'meta-llama/llama-3.3-70b-instruct:free'],
+    ollama: ollamaModels,
+    custom: []
+  }
   const chosenProvider = providers.find(p => p.name === form.provider)
-  const keyMissing = chosenProvider && chosenProvider.key_url && !chosenProvider.has_key
+  const needsHostedKey = form.provider !== 'ollama' && form.provider !== 'custom' &&
+    chosenProvider && !chosenProvider.has_key
 
   function gradedOf(prefill, record) {
     const responseVerdict = String(record && record.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—'
@@ -605,9 +616,14 @@ export default function App() {
                 Model
                 <input
                   value={form.model}
+                  list={'models-' + form.provider}
                   onChange={e => setForm({ ...form, model: e.target.value })}
                   placeholder={MODEL_HINT[form.provider] || 'model id'}
                 />
+                <datalist id={'models-' + form.provider}>
+                  {(SUGGESTED[form.provider] || []).map(m => <option key={m} value={m} />)}
+                </datalist>
+                <span className="muted small">ids drift — verify on the provider's model list page</span>
               </label>
               <label>
                 Trials per task (1–10)
@@ -637,11 +653,24 @@ export default function App() {
                   </label>
                 </>
               )}
-              {keyMissing && (
+              {form.provider !== 'ollama' && form.provider !== 'custom' && (
+                <label>
+                  API key (optional — stays in memory for this run only)
+                  <input
+                    type="password"
+                    value={form.apiKey}
+                    onChange={e => setForm({ ...form, apiKey: e.target.value })}
+                    placeholder={chosenProvider && chosenProvider.has_key
+                      ? 'using the key from .env — paste here to override'
+                      : 'paste your ' + form.provider + ' key here, or add it to .env'}
+                  />
+                </label>
+              )}
+              {keyMissing && !form.apiKey && (
                 <div className="muted small bad">
-                  No key for <b>{form.provider}</b> in .env — add it (line format:{' '}
-                  <code>{form.provider.toUpperCase()}_API_KEY=…</code>) or grab one at{' '}
-                  <a href={chosenProvider.key_url} target="_blank" rel="noreferrer">{chosenProvider.key_url}</a>
+                  No key yet for <b>{form.provider}</b>: paste it above for this run, or add{' '}
+                  <code>{form.provider.toUpperCase()}_API_KEY=…</code> to .env for reuse (get one at{' '}
+                  <a href={chosenProvider.key_url} target="_blank" rel="noreferrer">{chosenProvider.key_url}</a>)
                 </div>
               )}
               <div className="muted small">

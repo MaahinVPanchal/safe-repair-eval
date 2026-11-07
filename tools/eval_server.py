@@ -261,12 +261,16 @@ class Handler(BaseHTTPRequestHandler):
         if provider in PROVIDERS:
             p = PROVIDERS[provider]
             base_url = p["base_url"]
-            api_key = sandbox_daytona.load_env_keys().get(p["env"], "") if p["env"] else "ollama"
             provider_label = provider
-            if p["env"] and not api_key:
-                self._json({"error": "no %s in .env - add the key first (see %s)"
-                            % (p["env"], p["key_url"])}, 400)
-                return
+            # key resolution: pasted in the UI (in memory, this run only) > .env > error
+            if not api_key and p["env"]:
+                api_key = sandbox_daytona.load_env_keys().get(p["env"], "")
+            if not api_key:
+                if p["env"]:
+                    self._json({"error": "no API key: paste one in the panel, or set %s in .env (see %s)"
+                                % (p["env"], p["key_url"])}, 400)
+                    return
+                api_key = "ollama"  # local ollama ignores the key
         else:
             if not base_url:
                 self._json({"error": "provider or base_url required"}, 400)
