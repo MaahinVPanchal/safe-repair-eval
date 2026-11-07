@@ -71,6 +71,9 @@ function TermLine({ ev }) {
       </div>
     )
   }
+  if (ev.kind === 'skips') {
+    return <div className="tline dim"><span className="t">{t}</span>– {ev.count} already-saved trials skipped (resume-safe, nothing overwritten)</div>
+  }
   if (ev.kind === 'skip') {
     return <div className="tline dim"><span className="t">{t}</span>– skip {ev.task} · trial {ev.trial} (already saved)</div>
   }
@@ -161,6 +164,24 @@ export default function App() {
   useEffect(() => {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight
   }, [eventsCount, view])
+
+  // collapse the wall of "already saved" skips into one honest line
+  const termLines = useMemo(() => {
+    const all = runState ? (runState.events || []) : []
+    const out = []
+    let skip = null
+    for (const ev of all) {
+      if (ev.kind === 'skip') {
+        skip = skip || { kind: 'skips', count: 0 }
+        skip.count++
+        continue
+      }
+      if (skip) { out.push(skip); skip = null }
+      out.push(ev)
+    }
+    if (skip) out.push(skip)
+    return out
+  }, [runState])
 
   if (!data) return <div className="app muted">Loading graded evidence…</div>
 
@@ -282,8 +303,8 @@ export default function App() {
               the prompt head or response head. Full raw payloads live in transcripts/.
             </p>
             <div className="terminal" ref={termRef}>
-              {lastEvents.length
-                ? lastEvents.map((ev, i) => <TermLine key={i} ev={ev} />)
+              {termLines.length
+                ? termLines.map((ev, i) => <TermLine key={i} ev={ev} />)
                 : <div className="tline dim">no run events yet — launch one from the "+ Run Scenario" tab</div>}
             </div>
           </section>
@@ -322,9 +343,9 @@ export default function App() {
                 </datalist>
               </label>
               <label>
-                Trials per task (1–5)
+                Trials per task (1–10)
                 <input
-                  type="number" min="1" max="5"
+                  type="number" min="1" max="10"
                   value={form.trials}
                   onChange={e => setForm({ ...form, trials: e.target.value })}
                 />

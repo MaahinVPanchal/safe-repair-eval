@@ -125,7 +125,7 @@ def run_scenario(cfg):
             TASKS, cfg["base_url"], cfg["api_key"], cfg["model"],
             TRANSCRIPTS_DIR, int(cfg["trials"]),
             provider_label=cfg["provider_label"], endpoint_verified=True,
-            progress=lambda ev: event(**ev),
+            progress=progress,
         )
         event("run-complete", transcripts_total=len(os.listdir(TRANSCRIPTS_DIR)))
         export_data()
@@ -193,8 +193,8 @@ class Handler(BaseHTTPRequestHandler):
         model = str(body.get("model") or "").strip()
         trials = int(body.get("trials") or 1)
         api_key = str(body.get("api_key") or "").strip() or "ollama"
-        if not (base_url and model) or not (1 <= trials <= 5):
-            self._json({"error": "base_url, model (1-5 trials) required"}, 400)
+        if not (base_url and model) or not (1 <= trials <= 10):
+            self._json({"error": "base_url, model, trials 1-10 required"}, 400)
             return
         with LOCK:
             if STATE["running"]:
