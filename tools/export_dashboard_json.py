@@ -21,6 +21,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from graders import grader  # noqa: E402
 from harness.prompt_builder import build_prompt, load_tasks  # noqa: E402
+from harness.offline_grade import choose_executor  # noqa: E402
 
 OUT_PATH = os.path.join(ROOT, "dashboard-app", "public", "data.json")
 
@@ -58,6 +59,7 @@ def outcome_of(res):
 def build():
     tasks = {t["id"]: t for t in load_tasks(os.path.join(ROOT, "tasks"))}
     task_ids = sorted(tasks)
+    executor = choose_executor()
     per_model = {}
     meta = {}
     for path in sorted(glob.glob(os.path.join(ROOT, "transcripts", "*.json"))):
@@ -71,7 +73,7 @@ def build():
         if task is None:
             continue
         response = tr.get("response", "") or ""
-        res = grader.grade(task, response, executor=None)
+        res = grader.grade(task, response, executor=executor)
         parsed = grader.parse_response(response)
         try:
             trial = max(1, int(tr.get("trial", 1)))

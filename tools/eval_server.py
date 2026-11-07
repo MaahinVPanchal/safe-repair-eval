@@ -30,6 +30,7 @@ PORT = 8000
 TASKS = load_tasks(os.path.join(ROOT, "tasks"))
 TRANSCRIPTS_DIR = os.path.join(ROOT, "transcripts")
 ENV_FILE = os.path.join(ROOT, ".env")
+AUDIT_FILE = os.path.join(ROOT, "results", "human_audit_log.json")
 CREDENTIAL_KEYS = ["GEMINI_API_KEY", "GROQ_API_KEY", "NEBIUS_API_KEY",
                    "OPENROUTER_API_KEY", "DAYTONA_API_KEY"]
 
@@ -96,6 +97,25 @@ def upsert_env(updates):
             lines.append("%s=%s" % (key, value))
     with open(ENV_FILE, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(lines))
+
+
+def read_audit_log():
+    if not os.path.exists(AUDIT_FILE):
+        return []
+    try:
+        with open(AUDIT_FILE, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (ValueError, OSError):
+        return []
+
+
+def append_audit_record(record):
+    os.makedirs(os.path.dirname(AUDIT_FILE), exist_ok=True)
+    records = read_audit_log()
+    records.append(record)
+    with open(AUDIT_FILE, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(records, fh, indent=1)
+        fh.write("\n")
 
 STATE = {
     "running": False,
@@ -255,6 +275,8 @@ class Handler(BaseHTTPRequestHandler):
                         "sandbox_available": sandbox_ready()})
         elif self.path == "/api/credentials":
             self._json({"credentials": credentials_status()})
+        elif self.path == "/api/audit":
+            self._json({"records": read_audit_log()})
         elif self.path.startswith("/api/transcript"):
             q = parse_qs(urlparse(self.path).query)
             task_id = (q.get("task") or [""])[0]
@@ -282,6 +304,29 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "not found"}, 404)
 
     def do_POST(self):
+        if self.path == "/api/audit":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            except ValueError:
+                self._json({"error": "invalid JSON body"}, 400)
+                return
+            task_id = str(body.get("task_id") or "")
+            if task_id not in {t["id"] for t in TASKS}:
+                self._json({"error": "unknown task_id"}, 400)
+                return
+            record = {
+                "task_id": task_id,
+                "trial": int(body.get("trial") or 0),
+                "model": str(body.get("model") or "unknown"),
+                "verdict_confirmed": bool(body.get("verdict_confirmed")),
+                "note": str(body.get("note") or "")[:500],
+                "audited_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "auditor": "human (repo owner)"
+            }
+            append_audit_record(record)
+            self._json({"saved": True, "records": read_audit_log()})
+            return
         if self.path == "/api/credentials":
             try:
                 length = int(self.headers.get("Content-Length", 0))

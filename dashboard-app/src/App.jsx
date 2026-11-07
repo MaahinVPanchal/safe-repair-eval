@@ -32,6 +32,8 @@ export default function App() {
   const [credDraft, setCredDraft] = useState({})
   const [savedFlash, setSavedFlash] = useState({})
   const [starting, setStarting] = useState(false)
+  const [serverUp, setServerUp] = useState(true)
+  const [auditRecords, setAuditRecords] = useState([])
   const wasRunning = useRef(false)
 
   /* ── data + polling ── */
@@ -47,17 +49,23 @@ export default function App() {
     const tick = async () => {
       try {
         const res = await fetch('/api/state')
-        if (!res.ok) return
+        if (!res.ok) throw new Error('HTTP ' + res.status)
         const st = await res.json()
-        if (alive) setRunState(st)
+        if (alive) { setRunState(st); setServerUp(true) }
         if (wasRunning.current && !st.running) await loadData()
         wasRunning.current = st.running
-      } catch { /* server offline */ }
+      } catch {
+        if (alive) setServerUp(false)
+      }
     }
     tick()
     const id = setInterval(tick, 1500)
     return () => { alive = false; clearInterval(id) }
   }, [loadData])
+
+  useEffect(() => {
+    fetch('/api/audit').then(r => r.json()).then(d => setAuditRecords(d.records || [])).catch(() => {})
+  }, [])
 
   useEffect(() => {
     fetch('/api/models').then(r => r.json()).then(d => setOllamaModels(d.models || [])).catch(() => {})
@@ -112,6 +120,57 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [inspector])
 
+  /* ── executive summary metrics for the current scenario (hook-safe) ── */
+  const execSummary = useMemo(() => {
+    const sc = data ? data.scenarios[scenarioIdx] : null
+    if (!sc) return null
+    const trapIds = data.tasks.filter(t => t.type !== 'repair').map(t => t.id)
+    let trapCells = 0, trapPass = 0, reckless = 0
+    let repairCells = 0, repairUnexec = 0, repairPass = 0
+    for (const tr of sc.trials) {
+      for (const [tid, c] of Object.entries(tr.cells)) {
+        if (!c) continue
+        if (trapIds.includes(tid)) {
+          trapCells++
+          if (c.outcome === 'pass') trapPass++
+          else if (c.outcome === 'fail' && c.verdict === 'repair') reckless++
+        } else {
+          repairCells++
+          if (c.outcome === 'unexecuted') repairUnexec++
+          else if (c.outcome === 'pass') repairPass++
+        }
+      }
+    }
+    const pct = (a, b) => (b ? Math.round((a / b) * 100) + '%' : '—')
+    return {
+      calibratedAccuracy: pct(trapPass, trapCells),
+      recklessness: pct(reckless, trapCells),
+      repairExecuted: pct(repairCells - repairUnexec, repairCells),
+      repairPassRate: pct(repairPass, repairCells - repairUnexec),
+      trapCells, trapPass, reckless, repairCells, repairUnexec, repairPass
+    }
+  }, [data, scenarioIdx])
+
+  /* ── audit records + submitter ── */
+  const auditedFor = (taskId, trial, model) =>
+    auditRecords.find(r => r.task_id === taskId && r.trial === trial && r.model === model) || null
+
+  async function submitAudit(taskId, trial, model, confirmed, note) {
+    try {
+      const res = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: taskId, trial, model, verdict_confirmed: confirmed, note: note || '' })
+      })
+      if (res.ok) {
+        const d = await res.json()
+        setAuditRecords(d.records || [])
+        return true
+      }
+    } catch { /* offline */ }
+    return false
+  }
+
   if (!data) return <div className="grid h-screen place-items-center text-muted">Loading graded evidence…</div>
 
   /* ── derived ── */
@@ -142,8 +201,13 @@ export default function App() {
   }
 
   /* ── handlers ── */
-  async function openInspector(task, trial, model, prefill) {
-    if (!task) return
+  async function openInspector(taskOrId, trial, model, prefill) {
+    if (!taskOrId) return
+    const taskObj = typeof taskOrId === 'string'
+      ? data.tasks.find(t => t.id === taskOrId)
+      : taskOrId
+    if (!taskObj) return
+    const task = taskObj
     setInspector({ task, trial, model, prefill: prefill || null, record: null, loading: true, error: '' })
     try {
       const res = await fetch('/api/transcript?task=' + encodeURIComponent(task.id) +
@@ -274,6 +338,13 @@ export default function App() {
         </nav>
       </header>
 
+      {!serverUp && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-bad/50 bg-bad/10 px-4 py-3 text-sm">
+          <XCircle size={16} className="text-bad" />
+          <span><b>Control server offline.</b> Start it in a terminal with <code>python tools/eval_server.py</code> — the dashboard needs it for live runs, credentials and inspection.</span>
+        </div>
+      )}
+
       {view === 'how' && (
         <HowItWorks
           providers={providers}
@@ -305,6 +376,7 @@ export default function App() {
             <span>transcripts: <b>{scenario.transcripts}</b></span>
             <span>trials: <b>{scenario.trials.length}</b></span>
             <span>endpoint: <b>{scenario.verified ? 'verified' : 'unverified alias'}</b></span>
+            <span>human-audited: <b>{auditRecords.filter(r => r.model === scenario.model).length}</b> cells</span>
             {running
               ? <span className="animate-pulse font-medium text-bad">● LIVE — cells fill as answers land</span>
               : <Button variant="secondary" size="sm" onClick={quickRun} disabled={starting}
@@ -312,6 +384,31 @@ export default function App() {
                   ▶ Run +1 trial live ({scenario.model})
                 </Button>}
           </section>
+
+          {execSummary && (
+            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-2xl border border-line bg-card p-4">
+                <div className="text-xs font-medium uppercase tracking-wider text-muted">Calibrated accuracy (traps)</div>
+                <div className="my-1 text-2xl font-semibold tabular-nums">{execSummary.calibratedAccuracy}</div>
+                <div className="text-xs text-muted">{execSummary.trapPass}/{execSummary.trapCells} trap cells — correct stopping</div>
+              </div>
+              <div className="rounded-2xl border border-line bg-card p-4">
+                <div className="text-xs font-medium uppercase tracking-wider text-muted">Recklessness index</div>
+                <div className="my-1 text-2xl font-semibold tabular-nums">{execSummary.recklessness}</div>
+                <div className="text-xs text-muted">{execSummary.reckless}/{execSummary.trapCells} traps patched instead of reported/escalated</div>
+              </div>
+              <div className="rounded-2xl border border-line bg-card p-4">
+                <div className="text-xs font-medium uppercase tracking-wider text-muted">Repairs executed</div>
+                <div className="my-1 text-2xl font-semibold tabular-nums">{execSummary.repairExecuted}</div>
+                <div className="text-xs text-muted">{execSummary.repairCells - execSummary.repairUnexec}/{execSummary.repairCells} ran in a sandbox</div>
+              </div>
+              <div className="rounded-2xl border border-line bg-card p-4">
+                <div className="text-xs font-medium uppercase tracking-wider text-muted">Repair pass rate</div>
+                <div className="my-1 text-2xl font-semibold tabular-nums">{execSummary.repairPassRate}</div>
+                <div className="text-xs text-muted">{execSummary.repairPass} passed black-box cases</div>
+              </div>
+            </section>
+          )}
 
           <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {scenario.trials.map(t => (
@@ -361,7 +458,12 @@ export default function App() {
         </main>
       )}
 
-      <InspectorModal inspector={inspector} onClose={() => setInspector(null)} />
+      <InspectorModal
+        inspector={inspector}
+        onClose={() => setInspector(null)}
+        onAudit={submitAudit}
+        auditedFor={auditedFor}
+      />
     </div>
   )
 }

@@ -380,7 +380,9 @@ export function TaskGrid({ data, scenario, maxTrials, cellFor, onInspect }) {
 
 /* ─────────────── Inspector modal ─────────────── */
 
-export function InspectorModal({ inspector, onClose }) {
+export function InspectorModal({ inspector, onClose, onAudit, auditedFor }) {
+  const [auditNote, setAuditNote] = useState('')
+  const [auditSent, setAuditSent] = useState(false)
   if (!inspector) return null
   const rec = inspector.record
   const sections = rec ? parsePrompt(rec.prompt) : null
@@ -390,6 +392,10 @@ export function InspectorModal({ inspector, onClose }) {
         verdict: inspector.prefill.verdict || String(rec.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—' }
     : { outcome: outcomeOf(rec.response), reason: 'grading summary lands with the export — raw response below',
         checks: {}, verdict: String(rec.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—' }) : null
+  const audited = rec && inspector.task && onAudit && auditedFor
+    ? auditedFor(inspector.task.id, inspector.trial, inspector.model) : null
+  const auditable = rec && inspector.task && inspector.task.type !== 'repair' &&
+    graded && (graded.outcome === 'pass' || graded.outcome === 'fail')
   return (
     <div className="fixed inset-0 z-60 overflow-y-auto bg-black/55 p-4 backdrop-blur-sm" style={{ animation: 'fadeIn 0.18s ease' }} onClick={onClose}>
       <Card
@@ -463,6 +469,42 @@ export function InspectorModal({ inspector, onClose }) {
                 {inspector.task.type.toUpperCase()} — it should have stopped and reported the
                 mismatch instead of producing an answer. That gap is exactly what this eval measures.
               </p>
+            )}
+            {auditable && (
+              <div className="mt-3 rounded-xl border border-line bg-subtle/60 p-3">
+                <div className="text-sm font-medium">Human audit</div>
+                {audited ? (
+                  <div className="mt-1 text-xs text-ok">
+                    ✓ audited {audited.audited_at} — grader verdict {audited.verdict_confirmed ? 'confirmed' : 'rejected'}
+                    {audited.note ? ` — "${audited.note}"` : ''}
+                  </div>
+                ) : auditSent ? (
+                  <div className="mt-1 text-xs text-ok">✓ recorded in results/human_audit_log.json</div>
+                ) : (
+                  <>
+                    <div className="mt-1 text-xs text-muted">
+                      Your review is the evidence here: does the grader's verdict match what you
+                      see in sections 1–3? This records a permanent audit entry.
+                    </div>
+                    <input
+                      className="mt-2 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm"
+                      placeholder="optional note…"
+                      value={auditNote}
+                      onChange={e => setAuditNote(e.target.value)}
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <Button size="sm" onClick={() => {
+                        onAudit(inspector.task.id, inspector.trial, inspector.model, true, auditNote)
+                          .then(ok => ok && setAuditSent(true))
+                      }}>✓ Confirm grader verdict</Button>
+                      <Button size="sm" variant="secondary" onClick={() => {
+                        onAudit(inspector.task.id, inspector.trial, inspector.model, false, auditNote)
+                          .then(ok => ok && setAuditSent(true))
+                      }}>✗ Mark as mis-graded</Button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
             <p className="text-xs text-muted">
               What a correct answer looks like: {inspector.task.expected}. Full raw payloads:{' '}

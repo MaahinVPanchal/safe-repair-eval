@@ -54,7 +54,13 @@ def run_with_sandbox(task, parsed):
         return False, "no sandbox adapter: DAYTONA_API_KEY absent (unexecuted posture)"
 
     try:
-        from daytona import Daytona, DaytonaConfig, CreateSandboxParams
+        from daytona import Daytona, DaytonaConfig
+        try:
+            from daytona import CreateSandboxParams
+            create_params = CreateSandboxParams(language="python", network_block_all=True)
+        except ImportError:
+            from daytona import CreateSandboxFromImageParams
+            create_params = CreateSandboxFromImageParams(language="python", network_block_all=True)
     except ImportError:
         return False, "sandbox error: daytona SDK not installed (pip install daytona)"
 
@@ -62,10 +68,7 @@ def run_with_sandbox(task, parsed):
     sandbox = None
     try:
         daytona = Daytona(DaytonaConfig(api_key=api_key))
-        sandbox = daytona.create(CreateSandboxParams(
-            language="python",
-            network_block_all=True,  # spec: untrusted code gets no network
-        ))
+        sandbox = daytona.create(create_params)
 
         home = sandbox.get_user_home_dir() or "/home/daytona"
         base = home.rstrip("/") + "/eval"
@@ -95,9 +98,10 @@ def run_with_sandbox(task, parsed):
                 timeout=25,
             )
             exit_code = getattr(resp, "exit_code", None)
-            out = (getattr(resp, "stdout", "") or "").strip()
+            out = (getattr(resp, "result", None) or getattr(resp, "stdout", "") or "").strip()
             if exit_code != 0:
-                err = ((getattr(resp, "stderr", "") or "") or out).strip().splitlines()
+                raw_err = getattr(resp, "stderr", None) or getattr(resp, "result", "") or out
+                err = (raw_err or "").strip().splitlines()
                 tail = err[-1] if err else "unknown"
                 return False, "case %d exited nonzero: %s" % (i, tail[:160])
             if len(out) > 4096:
