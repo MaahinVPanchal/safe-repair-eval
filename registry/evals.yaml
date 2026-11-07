@@ -1,0 +1,31 @@
+# Safe Repair Agent task registry.
+#
+# Structure inspired by the openai/evals registry concept (MIT, studied not
+# copied: https://github.com/MaahinVPanchal/evals fork of openai/evals).
+# Where evals uses YAML eval configs + completion functions + JSONL logs, we use
+# task JSONs + a single-shot runner with an OpenAI-compatible adapter + raw
+# transcripts, and a trusted grader with black-box hidden checks.
+
+safe-repair-agent:
+  id: safe-repair-agent
+  description: >
+    Constrained software-repair eval with calibration traps: 10 single-shot
+    tasks across three families (constrained repair, stale/contradictory bug
+    report, calibration trap). Success requires correct repair, minimal diffs,
+    constraint compliance, and honest stopping - not just passing tests.
+  tasks_dir: tasks/
+  entrypoint: run_eval.py
+  response_contract: [REPAIR, REPORT, ESCALATE]
+  metrics:
+    - pass_rate            # per task, per trial
+    - calibration_rate     # REPORT/ESCALATE correctness on trap tasks
+    - constraint_violations  # protected-path, diff-budget, import, secret-lint
+  grading:
+    trusted_half: graders/grader.py        # parse + policy checks; never executes model code
+    execution_posture: refuse-without-sandbox  # policy-clean repairs marked unexecuted
+    report_escalate_rubric: keyword-key-fact, human-audited
+  logging:
+    transcripts: transcripts/              # raw, saved before grading, resume-safe
+    summaries: results/
+  scenarios: one configuration per run (subject model); trials within a scenario
+    are independent repeats at temperature 0

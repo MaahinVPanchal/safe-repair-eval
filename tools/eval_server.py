@@ -1,0 +1,171 @@
+"""Local control server: run eval scenarios live from the React dashboard.
+
+Endpoints (bound to 127.0.0.1 only - never expose beyond localhost):
+  GET  /api/state   run status + recent events + transcript count
+  GET  /api/models  installed Ollama model names (best effort; manual entry always allowed)
+  GET  /api/data    re-export graded data JSON, then serve it
+  POST /api/run     start one probe run: {base_url, model, trials[, api_key]}
+
+API keys posted here live in memory only and are never written to disk or logs.
+Transcripts are saved by harness.runner.probe (resume-safe, never overwritten).
+Run from the repo root:  python tools/eval_server.py   (port 8000)
+"""
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+from harness import runner as sra_runner  # noqa: E402
+from harness.prompt_builder import load_tasks  # noqa: E402
+
+PORT = 8000
+TASKS = load_tasks(os.path.join(ROOT, "tasks"))
+TRANSCRIPTS_DIR = os.path.join(ROOT, "transcripts")
+
+STATE = {
+    "running": False,
+    "config": None,
+    "started_utc": None,
+    "finished_utc": None,
+    "error": "",
+    "events": [],
+}
+LOCK = threading.Lock()
+
+
+def event(kind, **kw):
+    with LOCK:
+        STATE["events"].append({"utc": time.strftime("%H:%M:%S"), "kind": kind, **kw})
+        del STATE["events"][:-80]
+
+
+def provider_for(base_url):
+    if "generativelanguage" in base_url:
+        return "gemini-api"
+    if "groq" in base_url:
+        return "groq"
+    if "localhost" in base_url or "127.0.0.1" in base_url:
+        return "ollama-local"
+    return "hosted-unverified"
+
+
+def export_data():
+    """Re-export the graded data JSON and rebuild the static dashboard."""
+    for script in ("export_dashboard_json.py", "build_dashboard.py"):
+        subprocess.run([sys.executable, os.path.join(ROOT, "tools", script)],
+                       cwd=ROOT, capture_output=True)
+
+
+def run_scenario(cfg):
+    try:
+        with LOCK:
+            STATE.update({
+                "running": True,
+                "config": {k: cfg[k] for k in ("base_url", "model", "trials", "provider_label")},
+                "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "finished_utc": None,
+                "error": "",
+            })
+        event("run-start", model=cfg["model"], trials=cfg["trials"])
+
+        saved = sra_runner.probe(
+            TASKS, cfg["base_url"], cfg["api_key"], cfg["model"],
+            TRANSCRIPTS_DIR, int(cfg["trials"]),
+            provider_label=cfg["provider_label"], endpoint_verified=True,
+            progress=lambda ev: event(**ev),
+        )
+        event("run-complete", transcripts_total=len(os.listdir(TRANSCRIPTS_DIR)))
+        export_data()
+        event("export-done")
+    except Exception as exc:
+        STATE["error"] = "%s: %s" % (type(exc).__name__, exc)
+        event("run-error", error=STATE["error"])
+    finally:
+        STATE["running"] = False
+        STATE["finished_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def ollama_models():
+    try:
+        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3) as r:
+            return [m.get("name") for m in json.load(r).get("models", []) if m.get("name")]
+    except Exception:
+        return []
+
+
+def transcripts_count():
+    try:
+        return len([f for f in os.listdir(TRANSCRIPTS_DIR) if f.endswith(".json")])
+    except OSError:
+        return 0
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _json(self, obj, code=200):
+        body = json.dumps(obj).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == "/api/state":
+            with LOCK:
+                snap = dict(STATE)
+                snap["events"] = list(STATE["events"][-60:])
+            snap["transcripts"] = transcripts_count()
+            self._json(snap)
+        elif self.path == "/api/models":
+            self._json({"models": ollama_models()})
+        elif self.path == "/api/data":
+            export_data()
+            with open(os.path.join(ROOT, "dashboard-app", "public", "data.json"),
+                      encoding="utf-8") as fh:
+                self._json(json.load(fh))
+        else:
+            self._json({"error": "not found"}, 404)
+
+    def do_POST(self):
+        if self.path != "/api/run":
+            self._json({"error": "not found"}, 404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        except ValueError:
+            self._json({"error": "invalid JSON body"}, 400)
+            return
+        base_url = str(body.get("base_url") or "").strip()
+        model = str(body.get("model") or "").strip()
+        trials = int(body.get("trials") or 1)
+        api_key = str(body.get("api_key") or "").strip() or "ollama"
+        if not (base_url and model) or not (1 <= trials <= 5):
+            self._json({"error": "base_url, model (1-5 trials) required"}, 400)
+            return
+        with LOCK:
+            if STATE["running"]:
+                self._json({"error": "a run is already in progress"}, 409)
+                return
+        cfg = {"base_url": base_url, "model": model, "trials": trials,
+               "api_key": api_key, "provider_label": provider_for(base_url)}
+        threading.Thread(target=run_scenario, args=(cfg,), daemon=True).start()
+        self._json({"started": True, "config": {k: cfg[k] for k in
+                                                ("base_url", "model", "trials", "provider_label")}})
+
+    def log_message(self, fmt, *args):
+        pass  # keep the console quiet; never log request bodies (may contain keys)
+
+
+if __name__ == "__main__":
+    os.makedirs(TRANSCRIPTS_DIR, exist_ok=True)
+    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    print("Safe Repair Agent control server on http://127.0.0.1:%d" % PORT)
+    print("React app: cd dashboard-app && npm run dev  ->  http://localhost:5173")
+    server.serve_forever()

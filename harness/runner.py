@@ -62,8 +62,12 @@ def chat_completion(base_url, api_key, model, prompt, timeout_s=120):
 
 
 def probe(tasks, base_url, api_key, model, out_dir, trials=1,
-          provider_label="unverified-alias", endpoint_verified=False):
-    """Runs trials per task, saving each raw transcript immediately."""
+          provider_label="unverified-alias", endpoint_verified=False, progress=None):
+    """Runs trials per task, saving each raw transcript immediately.
+
+    progress: optional callback receiving event dicts
+    ({kind: start|done|skip, task, trial, outcome?, error?}) for live UIs.
+    """
     os.makedirs(out_dir, exist_ok=True)
     saved = []
     for task in tasks:
@@ -73,8 +77,18 @@ def probe(tasks, base_url, api_key, model, out_dir, trials=1,
                                     % (task["id"], _slug(model), i))
             if os.path.exists(out_path):
                 saved.append(out_path)
+                if progress:
+                    try:
+                        progress({"kind": "skip", "task": task["id"], "trial": i})
+                    except Exception:
+                        pass
                 print("skip existing %s" % os.path.relpath(out_path))
                 continue
+            if progress:
+                try:
+                    progress({"kind": "start", "task": task["id"], "trial": i})
+                except Exception:
+                    pass
             record = {
                 "schema": TRANSCRIPT_SCHEMA,
                 "task_id": task["id"],
@@ -105,6 +119,12 @@ def probe(tasks, base_url, api_key, model, out_dir, trials=1,
             with open(out_path, "w", encoding="utf-8", newline="\n") as fh:
                 json.dump(record, fh, indent=2)
                 fh.write("\n")
+            if progress:
+                try:
+                    progress({"kind": "done", "task": task["id"], "trial": i,
+                              "outcome": "error" if record["error"] else "saved"})
+                except Exception:
+                    pass
             saved.append(out_path)
             print("saved %s (%s)" % (os.path.relpath(out_path), record["error"] or "ok"))
     return saved
