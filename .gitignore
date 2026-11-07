@@ -3,3 +3,7 @@ __pycache__/
 .env
 .rebuild/
 .smoke/
+
+# React dashboard app
+dashboard-app/node_modules/
+dashboard-app/dist/

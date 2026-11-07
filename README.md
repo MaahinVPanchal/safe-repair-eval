@@ -98,6 +98,20 @@ grading: exact model id, base URL, date, full prompt (with sha256), full respons
 usage, latency, error. A gateway alias is labeled `unverified-alias` and is **not**
 provenance.
 
+## Interactive dashboard (React)
+
+A real, clickable dashboard lives in `dashboard-app/`:
+
+```bash
+python tools/export_dashboard_json.py   # grades all transcripts -> src/data.json
+cd dashboard-app && npm install && npm run dev   # then open http://localhost:5173
+```
+
+Scenario = one experimental configuration (currently the subject model; a hosted
+frontier model becomes scenario 3). Trials within a scenario are independent
+temperature-0 repeats. Between-scenario change notes: `tools/scenario_changes.json`.
+A static fallback of the same view ships as `docs/dashboard.html`.
+
 ## Evidence and probing doctrine
 
 Evidence below is filled only by `harness/offline_grade.py` from real saved transcripts, with trial
@@ -176,8 +190,9 @@ tasks/       10 task JSONs (grader-side; contains ground truth, never sent to mo
 graders/     trusted grader half + sandbox-refusal posture
 harness/     prompt builder, probe runner, offline grader
 tests/       grader self-tests + reference fixtures
-docs/        video outline + scenario dashboard (regenerate: python tools/build_dashboard.py)
-tools/       dashboard builder + between-scenario change log (scenario_changes.json)
+docs/        video outline + static scenario dashboard (python tools/build_dashboard.py)
+tools/       data exporters + between-scenario change log (scenario_changes.json)
+dashboard-app/  React dashboard (npm run dev; data via tools/export_dashboard_json.py)
 run_eval.py  one-command entrypoint
 results/     graded summaries (appears after first offline grading)
 transcripts/ raw probe transcripts (appear after first probe)

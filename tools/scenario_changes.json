@@ -1,15 +1,15 @@
 {
-  "note": "Log what changed between scenarios here, then rebuild with: python tools/build_dashboard.py. Our trial rounds are independent repeats at temperature 0 by design, so the defaults state that honestly; if you ever fix a task, grader pattern, or harness defect between passes, replace the text for that gap.",
+  "note": "Log what changed between scenarios here. A scenario is one experimental configuration (model x task-set x harness); within a scenario, trials are independent repeats at temperature 0 and nothing changes between them. Rebuild both dashboards after editing: python tools/export_dashboard_json.py && python tools/build_dashboard.py",
   "pairs": [
     {
       "from": 1,
       "to": 2,
-      "text": "No task, grader, or harness changes - scenario 2 is an independent repeat trial at temperature 0 on identical tasks. Repeat trials measure consistency, not fixes."
+      "text": "Scenario 2 swaps the subject model: qwen2.5-coder:7b-8k (larger weights, same family), on identical tasks, grader, and harness. It measures the model-scaling effect - not task or grader changes. Scenario 1 kept 3 trials per task; scenario 2 currently has the exploratory 1-trial pass."
     },
     {
       "from": 2,
       "to": 3,
-      "text": "No task, grader, or harness changes - independent repeat trial on identical tasks."
+      "text": "Scenario 3 is planned, not run: a hosted frontier model via a free API key (Gemini or Groq), same tasks and grader, zero local compute. Not run yet - no .env present when this was generated."
     }
   ]
 }
