@@ -93,16 +93,9 @@ export default function App() {
     fetch('/api/models').then(r => r.json()).then(d => setOllamaModels(d.models || [])).catch(() => {})
   }, [])
 
-  if (!data) return <div className="app muted">Loading graded evidence…</div>
-
-  const scenario = data.scenarios[scenarioIdx]
-  const prev = scenarioIdx > 0 ? data.scenarios[scenarioIdx - 1] : null
-  const delta = prev && scenario ? deltaVs(prev, scenario, data.tasks) : null
-  const running = runState ? runState.running : false
-  const lastEvents = runState ? (runState.events || []).slice(-10) : []
-
   // live overlay: events from an in-flight run color cells as responses land.
   // Only applied to the scenario whose model the run targets.
+  // (Rules of Hooks: every hook must run before the early return below.)
   const live = useMemo(() => {
     const m = {}
     let maxT = 0
@@ -120,6 +113,14 @@ export default function App() {
     }
     return { m, maxT }
   }, [runState])
+
+  if (!data) return <div className="app muted">Loading graded evidence…</div>
+
+  const scenario = data.scenarios[scenarioIdx]
+  const prev = scenarioIdx > 0 ? data.scenarios[scenarioIdx - 1] : null
+  const delta = prev && scenario ? deltaVs(prev, scenario, data.tasks) : null
+  const running = runState ? runState.running : false
+  const lastEvents = runState ? (runState.events || []).slice(-10) : []
 
   const liveActive = runState && runState.running && runState.config &&
     scenario && runState.config.model === scenario.model
