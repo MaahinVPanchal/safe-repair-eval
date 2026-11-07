@@ -384,7 +384,7 @@ export default function App() {
                           return <button key={n} className="cell live" title={`Trial ${n}: probing now…`}>◌</button>
                         }
                         const c = state === 'data' || state === 'live-done' ? cell : null
-                        const st = c ? OUT[c.outcome] : null
+                        const st = c ? (OUT[c.outcome] || { cls: 'cell fail', sym: '✗', label: c.outcome || 'ungraded' }) : null
                         return (
                           <button
                             key={n}
@@ -410,8 +410,8 @@ export default function App() {
                 <span className="muted">— trial {selected.trial} · {scenario.model}</span>
               </h2>
               <div className="kv">
-                <span className={'badge ' + selected.cell.outcome}>
-                  {OUT[selected.cell.outcome].label}
+                <span className={'badge ' + (OUT[selected.cell.outcome] ? selected.cell.outcome : 'fail')}>
+                  {(OUT[selected.cell.outcome] || { label: selected.cell.outcome || 'ungraded' }).label}
                 </span>
                 <span>model verdict: <b>{selected.cell.verdict}</b></span>
                 {selected.cell.latency != null && <span>{selected.cell.latency}s</span>}

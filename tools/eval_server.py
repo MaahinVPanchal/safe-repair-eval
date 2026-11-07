@@ -101,6 +101,13 @@ def run_scenario(cfg):
                         ev.update(graded)
                 except Exception as exc:
                     ev["grading_error"] = str(exc)
+                # the UI only knows three outcomes; anything else (e.g. a failed
+                # endpoint call saved with an error) renders as an honest fail
+                if ev.get("outcome") not in ("pass", "fail", "unexecuted"):
+                    ev["outcome"] = "fail"
+                    ev["reason"] = (ev.get("grading_error")
+                                    or ("endpoint error: " + str(ev.get("error") or "unknown")
+                                        if ev.get("error") else "response could not be graded"))
             event(**ev)
 
         saved = sra_runner.probe(
