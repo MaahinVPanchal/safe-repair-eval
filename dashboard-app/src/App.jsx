@@ -345,6 +345,10 @@ export default function App() {
         </div>
       )}
 
+      {view === 'settings' && (
+        <SettingsView creds={creds} onSave={saveCred} />
+      )}
+
       {view === 'how' && (
         <HowItWorks
           providers={providers}
