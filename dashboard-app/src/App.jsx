@@ -135,12 +135,14 @@ export default function App() {
   const [inspector, setInspector] = useState(null)
   const [runState, setRunState] = useState(null)
   const [form, setForm] = useState({
-    baseUrl: 'http://localhost:11434/v1',
+    provider: 'groq',
     model: '',
     trials: 3,
+    baseUrl: 'http://localhost:11434/v1',
     apiKey: ''
   })
   const [ollamaModels, setOllamaModels] = useState([])
+  const [providers, setProviders] = useState([])
   const [starting, setStarting] = useState(false)
   const wasRunning = useRef(false)
 
@@ -171,9 +173,10 @@ export default function App() {
     return () => { alive = false; clearInterval(id) }
   }, [loadData])
 
-  // ollama model list for the dropdown
+  // ollama model list + hosted provider key status
   useEffect(() => {
     fetch('/api/models').then(r => r.json()).then(d => setOllamaModels(d.models || [])).catch(() => {})
+    fetch('/api/providers').then(r => r.json()).then(d => setProviders(d.providers || [])).catch(() => {})
   }, [])
 
   // live overlay: events from an in-flight run color cells as responses land.
@@ -298,15 +301,15 @@ export default function App() {
     e.preventDefault()
     setStarting(true)
     try {
+      const payload = { provider: form.provider, model: form.model, trials: Number(form.trials) }
+      if (form.provider === 'custom') {
+        payload.base_url = form.baseUrl
+        payload.api_key = form.apiKey
+      }
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          base_url: form.baseUrl,
-          model: form.model,
-          trials: Number(form.trials),
-          api_key: form.apiKey
-        })
+        body: JSON.stringify(payload)
       })
       const body = await res.json()
       if (!res.ok) alert('Run rejected: ' + (body.error || res.status))
@@ -315,6 +318,17 @@ export default function App() {
       setStarting(false)
     }
   }
+
+  const MODEL_HINT = {
+    gemini: 'gemini-2.5-flash — copy the exact model id from AI Studio',
+    groq: 'llama-3.3-70b-versatile — copy the id from console.groq.com',
+    nebius: 'meta-llama/Meta-Llama-3.3-70B-Instruct — copy the id from studio.nebius.ai',
+    openrouter: 'deepseek/deepseek-r1:free — copy the id from openrouter.ai/models',
+    ollama: ollamaModels[0] || 'qwen2.5-coder:3b-8k',
+    custom: 'model id for your custom endpoint'
+  }
+  const chosenProvider = providers.find(p => p.name === form.provider)
+  const keyMissing = chosenProvider && chosenProvider.key_url && !chosenProvider.has_key
 
   function gradedOf(prefill, record) {
     const responseVerdict = String(record && record.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—'
@@ -417,24 +431,26 @@ export default function App() {
             </p>
             <form className="runform" onSubmit={startRun}>
               <label>
-                Base URL
-                <input
-                  value={form.baseUrl}
-                  onChange={e => setForm({ ...form, baseUrl: e.target.value })}
-                  placeholder="http://localhost:11434/v1"
-                />
+                Provider (key resolved from .env — never sent to the browser)
+                <select
+                  value={form.provider}
+                  onChange={e => setForm({ ...form, provider: e.target.value, model: '' })}
+                >
+                  {providers.map(p => (
+                    <option key={p.name} value={p.name}>
+                      {p.name} {p.has_key || !p.key_url ? '· key ✓' : '· key missing'}
+                    </option>
+                  ))}
+                  <option value="custom">custom endpoint…</option>
+                </select>
               </label>
               <label>
                 Model
                 <input
                   value={form.model}
-                  list="models"
                   onChange={e => setForm({ ...form, model: e.target.value })}
-                  placeholder={ollamaModels[0] || 'qwen2.5-coder:3b-8k'}
+                  placeholder={MODEL_HINT[form.provider] || 'model id'}
                 />
-                <datalist id="models">
-                  {ollamaModels.map(m => <option key={m} value={m} />)}
-                </datalist>
               </label>
               <label>
                 Trials per task (1–10)
@@ -444,22 +460,39 @@ export default function App() {
                   onChange={e => setForm({ ...form, trials: e.target.value })}
                 />
               </label>
-              <label>
-                API key (optional)
-                <input
-                  type="password"
-                  value={form.apiKey}
-                  onChange={e => setForm({ ...form, apiKey: e.target.value })}
-                  placeholder="ollama needs none; gsk_… / AIza… for hosted"
-                />
-              </label>
+              {form.provider === 'custom' && (
+                <>
+                  <label>
+                    Base URL
+                    <input
+                      value={form.baseUrl}
+                      onChange={e => setForm({ ...form, baseUrl: e.target.value })}
+                      placeholder="https://…/v1"
+                    />
+                  </label>
+                  <label>
+                    API key (in memory only)
+                    <input
+                      type="password"
+                      value={form.apiKey}
+                      onChange={e => setForm({ ...form, apiKey: e.target.value })}
+                    />
+                  </label>
+                </>
+              )}
+              {keyMissing && (
+                <div className="muted small bad">
+                  No key for <b>{form.provider}</b> in .env — add it (line format:{' '}
+                  <code>{form.provider.toUpperCase()}_API_KEY=…</code>) or grab one at{' '}
+                  <a href={chosenProvider.key_url} target="_blank" rel="noreferrer">{chosenProvider.key_url}</a>
+                </div>
+              )}
               <div className="muted small">
-                provider label: <b>{providerFor(form.baseUrl)}</b>
-                {' · '}endpoint will be marked verified (you asserted the provider)
+                provider label: <b>{form.provider === 'custom' ? providerFor(form.baseUrl) : form.provider}</b>
               </div>
               <button
                 className="runbtn"
-                disabled={starting || running || !form.baseUrl || !form.model}
+                disabled={starting || running || !form.model || (form.provider === 'custom' && !form.baseUrl)}
                 type="submit"
               >
                 {running ? 'A run is in progress…' : `Run ${form.trials || 1} trial(s) × 10 tasks`}

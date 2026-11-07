@@ -24,10 +24,36 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from harness import runner as sra_runner  # noqa: E402
 from harness.prompt_builder import load_tasks  # noqa: E402
+from graders.sandbox_daytona import load_env_keys  # noqa: E402
 
 PORT = 8000
 TASKS = load_tasks(os.path.join(ROOT, "tasks"))
 TRANSCRIPTS_DIR = os.path.join(ROOT, "transcripts")
+
+# Hosted model providers. Keys resolve SERVER-SIDE from .env/environment and
+# are never sent to the browser; the client only sees which providers are ready.
+PROVIDERS = {
+    "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+               "env": "GEMINI_API_KEY", "key_url": "https://aistudio.google.com/apikey"},
+    "groq": {"base_url": "https://api.groq.com/openai/v1",
+             "env": "GROQ_API_KEY", "key_url": "https://console.groq.com/keys"},
+    "nebius": {"base_url": "https://api.studio.nebius.ai/v1",
+               "env": "NEBIUS_API_KEY", "key_url": "https://studio.nebius.ai"},
+    "openrouter": {"base_url": "https://openrouter.ai/api/v1",
+                   "env": "OPENROUTER_API_KEY", "key_url": "https://openrouter.ai/keys"},
+    "ollama": {"base_url": "http://localhost:11434/v1",
+               "env": None, "key_url": None},
+}
+
+
+def provider_status():
+    keys = load_env_keys()
+    out = []
+    for name, p in PROVIDERS.items():
+        has_key = True if p["env"] is None else bool(keys.get(p["env"]))
+        out.append({"name": name, "base_url": p["base_url"],
+                    "has_key": has_key, "key_url": p["key_url"]})
+    return out
 
 STATE = {
     "running": False,
@@ -48,9 +74,13 @@ def event(kind, **kw):
 
 def provider_for(base_url):
     if "generativelanguage" in base_url:
-        return "gemini-api"
+        return "gemini"
     if "groq" in base_url:
         return "groq"
+    if "nebius" in base_url:
+        return "nebius"
+    if "openrouter" in base_url:
+        return "openrouter"
     if "localhost" in base_url or "127.0.0.1" in base_url:
         return "ollama-local"
     return "hosted-unverified"
@@ -172,6 +202,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(snap)
         elif self.path == "/api/models":
             self._json({"models": ollama_models()})
+        elif self.path == "/api/providers":
+            self._json({"providers": provider_status()})
         elif self.path.startswith("/api/transcript"):
             q = parse_qs(urlparse(self.path).query)
             task_id = (q.get("task") or [""])[0]
@@ -208,19 +240,35 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self._json({"error": "invalid JSON body"}, 400)
             return
+        provider = str(body.get("provider") or "").strip()
         base_url = str(body.get("base_url") or "").strip()
         model = str(body.get("model") or "").strip()
         trials = int(body.get("trials") or 1)
-        api_key = str(body.get("api_key") or "").strip() or "ollama"
-        if not (base_url and model) or not (1 <= trials <= 10):
-            self._json({"error": "base_url, model, trials 1-10 required"}, 400)
+        api_key = str(body.get("api_key") or "").strip()
+        if provider in PROVIDERS:
+            p = PROVIDERS[provider]
+            base_url = p["base_url"]
+            api_key = load_env_keys().get(p["env"], "") if p["env"] else "ollama"
+            provider_label = provider
+            if p["env"] and not api_key:
+                self._json({"error": "no %s in .env - add the key first (see %s)"
+                            % (p["env"], p["key_url"])}, 400)
+                return
+        else:
+            if not base_url:
+                self._json({"error": "provider or base_url required"}, 400)
+                return
+            api_key = api_key or "ollama"
+            provider_label = provider_for(base_url)
+        if not model or not (1 <= trials <= 10):
+            self._json({"error": "model and trials 1-10 required"}, 400)
             return
         with LOCK:
             if STATE["running"]:
                 self._json({"error": "a run is already in progress"}, 409)
                 return
         cfg = {"base_url": base_url, "model": model, "trials": trials,
-               "api_key": api_key, "provider_label": provider_for(base_url)}
+               "api_key": api_key, "provider_label": provider_label}
         threading.Thread(target=run_scenario, args=(cfg,), daemon=True).start()
         self._json({"started": True, "config": {k: cfg[k] for k in
                                                 ("base_url", "model", "trials", "provider_label")}})
