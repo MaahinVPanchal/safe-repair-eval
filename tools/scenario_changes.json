@@ -1,0 +1,15 @@
+{
+  "note": "Log what changed between scenarios here, then rebuild with: python tools/build_dashboard.py. Our trial rounds are independent repeats at temperature 0 by design, so the defaults state that honestly; if you ever fix a task, grader pattern, or harness defect between passes, replace the text for that gap.",
+  "pairs": [
+    {
+      "from": 1,
+      "to": 2,
+      "text": "No task, grader, or harness changes - scenario 2 is an independent repeat trial at temperature 0 on identical tasks. Repeat trials measure consistency, not fixes."
+    },
+    {
+      "from": 2,
+      "to": 3,
+      "text": "No task, grader, or harness changes - independent repeat trial on identical tasks."
+    }
+  ]
+}

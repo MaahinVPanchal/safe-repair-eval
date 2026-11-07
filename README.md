@@ -156,7 +156,8 @@ tasks/       10 task JSONs (grader-side; contains ground truth, never sent to mo
 graders/     trusted grader half + sandbox-refusal posture
 harness/     prompt builder, probe runner, offline grader
 tests/       grader self-tests + reference fixtures
-docs/        video outline
+docs/        video outline + scenario dashboard (regenerate: python tools/build_dashboard.py)
+tools/       dashboard builder + between-scenario change log (scenario_changes.json)
 run_eval.py  one-command entrypoint
 results/     graded summaries (appears after first offline grading)
 transcripts/ raw probe transcripts (appear after first probe)
