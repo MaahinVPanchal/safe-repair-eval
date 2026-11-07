@@ -221,6 +221,14 @@ export default function App() {
     return out
   }, [runState])
 
+  // ESC closes the inspector modal
+  useEffect(() => {
+    if (!inspector) return
+    const onKey = (e) => { if (e.key === 'Escape') setInspector(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [inspector])
+
   if (!data) return <div className="app muted">Loading graded evidence…</div>
 
   const scenario = data.scenarios[scenarioIdx]
@@ -252,7 +260,6 @@ export default function App() {
   async function openInspector(task, trial, model, prefill) {
     if (!task) return
     setInspector({ task, trial, model, prefill: prefill || null, record: null, loading: true, error: '' })
-    setView('results')
     try {
       const res = await fetch('/api/transcript?task=' + encodeURIComponent(task.id) +
         '&trial=' + trial + '&model=' + encodeURIComponent(model))
@@ -309,21 +316,22 @@ export default function App() {
     }
   }
 
-  const gradedOf = (prefill, record) => {
+  function gradedOf(prefill, record) {
+    const responseVerdict = String(record && record.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—'
     if (prefill && prefill.outcome) {
       return {
         outcome: prefill.outcome,
         reason: prefill.reason || '',
-        checks: {},
-        verdict: prefill.verdict || (record ? String(record.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—' : '—')
+        checks: prefill.checks || {},
+        verdict: prefill.verdict || responseVerdict
       }
     }
     if (record) {
       return {
-        outcome: (String(record.response || '').match(/VERDICT:/) ? 'unexecuted' : 'fail'),
-        reason: 'graded summary appears after export — see transcripts/' + (record.task_id || ''),
+        outcome: /VERDICT:/.test(String(record.response || '')) ? 'unexecuted' : 'fail',
+        reason: 'grading summary lands with the export — raw response below',
         checks: {},
-        verdict: String(record.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—'
+        verdict: responseVerdict
       }
     }
     return null
@@ -377,7 +385,7 @@ export default function App() {
             <p className="muted small">
               What the runner sends, what the model answers, and how the trusted grader
               judges it — one block per trial, live during a run. Click a SEND or
-              RESPONSE line to open the full prompt, response, and grading.
+              RESPONSE line to open the full prompt, response, and grading in an inspector.
             </p>
             <div className="terminal" ref={termRef}>
               {termLines.length
@@ -569,7 +577,7 @@ export default function App() {
                           <button
                             key={n}
                             className={c ? st.cls + ' clickable' : 'cell notrun'}
-                            title={c ? `Trial ${n}: ${st.label} — ${c.reason}` : `Trial ${n}: not run — click nothing to see`}
+                            title={c ? `Trial ${n}: ${st.label} — click to inspect prompt, response, and grading` : `Trial ${n}: not run`}
                             onClick={() => c && openInspector(t, n, scenario.model, { outcome: c.outcome, reason: c.reason, checks: c.checks, verdict: c.verdict })}
                           >
                             {c ? st.sym : '—'}
@@ -583,22 +591,36 @@ export default function App() {
             </tbody>
           </table>
 
-          <section className="detail" aria-live="polite">
-            {!inspector && (
-              <span className="muted">Select a cell (or a SEND/RESPONSE line in the Terminal) to see the full prompt that was sent, the model's complete answer, and how the grader judged it.</span>
-            )}
-            {inspector && inspector.loading && (
-              <span className="muted">Loading transcript…</span>
-            )}
-            {inspector && inspector.error && (
-              <span className="bad">Transcript error: {inspector.error}</span>
-            )}
-            {inspector && inspector.record && (() => {
+          <section className="changes">
+            <h2>Changes between scenarios</h2>
+            {data.changes.map(c => (
+              <p key={c.from}>
+                <b>Scenario {c.from} → {c.to}:</b> {c.text}
+              </p>
+            ))}
+          </section>
+
+          <footer className="muted small">
+            Posture: model code is never executed (no verified sandbox ships here) — repair
+            trials that pass all policy checks are marked "not executed". REPORT/ESCALATE
+            rows are keyword-rubric results pending human audit. Every claim traces to a raw
+            transcript in transcripts/. Live runs go through tools/eval_server.py
+            (127.0.0.1 only); keys stay in memory.
+          </footer>
+        </main>
+      )}
+
+      {inspector && (
+        <div className="overlay" onClick={() => setInspector(null)}>
+          <section className="detail modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+            <button className="closebtn" onClick={() => setInspector(null)} aria-label="Close inspector">✕</button>
+            {inspector.loading && <span className="muted">Loading transcript…</span>}
+            {inspector.error && <span className="bad">Transcript error: {inspector.error}</span>}
+            {inspector.record && (() => {
               const rec = inspector.record
               const sections = parsePrompt(rec.prompt)
               const files = parseFiles(sections.repository)
               const graded = gradedOf(inspector.prefill, rec) || {}
-              const responseVerdict = String(rec.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—'
               return (
                 <>
                   <h2>
@@ -650,7 +672,7 @@ export default function App() {
                   <p>
                     <b>Checks:</b>{' '}
                     {Object.keys(graded.checks || {}).length === 0
-                      ? 'see section 2 — grading summary lands with the export for live runs'
+                      ? 'full check list appears after the export for live runs — raw response above in the meantime'
                       : Object.entries(graded.checks).map(([k, v]) => (
                           <span key={k} className={'check ' + (v ? 'ok' : 'bad')}>
                             {k}: {v ? 'ok' : 'FAILED'}
@@ -682,24 +704,7 @@ export default function App() {
               )
             })()}
           </section>
-
-          <section className="changes">
-            <h2>Changes between scenarios</h2>
-            {data.changes.map(c => (
-              <p key={c.from}>
-                <b>Scenario {c.from} → {c.to}:</b> {c.text}
-              </p>
-            ))}
-          </section>
-
-          <footer className="muted small">
-            Posture: model code is never executed (no verified sandbox ships here) — repair
-            trials that pass all policy checks are marked "not executed". REPORT/ESCALATE
-            rows are keyword-rubric results pending human audit. Every claim traces to a raw
-            transcript in transcripts/. Live runs go through tools/eval_server.py
-            (127.0.0.1 only); keys stay in memory.
-          </footer>
-        </main>
+        </div>
       )}
     </div>
   )
