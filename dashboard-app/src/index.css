@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+/* ── design tokens (auto light/dark) ─────────────────────────── */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-ok: var(--ok);
+  --color-bad: var(--bad);
+  --color-warn: var(--warn);
+}
+
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#f5f6f8, #0f1115);
+  --card: light-dark(#ffffff, #181b20);
+  --subtle: light-dark(#f0f1f4, #1e2127);
+  --line: light-dark(#e2e5ea, #2a2e36);
+  --fg: light-dark(#17181c, #eceef1);
+  --muted: light-dark(#5f6470, #9aa0ab);
+  --faint: light-dark(#8b949e, #6e7681);
+  --accent: light-dark(#3b5bdb, #7b95f7);
+  --ok: light-dark(#116329, #2ea043);
+  --bad: light-dark(#c22730, #f85149);
+  --warn: light-dark(#8a5a00, #d29922);
+}
+
+/* ── base ────────────────────────────────────────────────────── */
+body { @apply bg-bg text-fg antialiased; font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.55; }
+
+/* ── trial cells (complex repeated pattern) ──────────────────── */
+.cell {
+  @apply inline-flex h-[34px] w-[52px] items-center justify-center rounded-lg
+         border border-transparent text-[15px] transition-all duration-150;
+}
+.cell-pass { @apply bg-ok/15 text-ok; }
+.cell-fail { @apply bg-bad/15 text-bad; }
+.cell-unexec { @apply bg-subtle text-muted; }
+.cell-notrun { @apply border-dashed border-line text-faint; }
+.cell-live { @apply bg-warn/15 text-warn animate-pulse; }
+.cell-clickable { @apply cursor-pointer hover:scale-[1.08] hover:brightness-105; }
+
+/* ── terminal (deliberately dark in both themes) ─────────────── */
+.terminal {
+  @apply max-h-[460px] overflow-auto rounded-xl border border-[#21262d] bg-[#0d1117] p-3
+         font-mono text-xs leading-relaxed text-[#c9d1d9];
+}
+.tline { @apply py-0.5 break-words whitespace-pre-wrap; }
+.tline-clickable { @apply cursor-pointer rounded-md hover:bg-[#161b22]; }
+.t-send { @apply text-[#79c0ff]; }
+.t-recv { @apply text-[#c9d1d9]; }
+.t-ok { @apply text-[#2ea043]; }
+.t-bad { @apply text-[#f85149]; }
+.t-dim, .t-dim * { @apply text-[#8b949e]; }
+.t-time { @apply mr-2 text-[#6e7681]; }
+.tpayload {
+  @apply my-1 ml-4 border-l-2 border-[#30363d] bg-[#161b22] p-2 text-[11px]
+         break-words whitespace-pre-wrap text-[#8b949e];
+}
+.tpayload pre { @apply bg-transparent p-0 text-[#c9d1d9]; }
