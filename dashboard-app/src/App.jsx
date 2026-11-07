@@ -1,62 +1,89 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './styles.css'
 
+/* ─────────────────────────── constants ─────────────────────────── */
+
 const OUT = {
-  pass: { label: 'pass', sym: '✓', cls: 'cell pass' },
-  fail: { label: 'fail', sym: '✗', cls: 'cell fail' },
-  unexecuted: { label: 'not executed', sym: '◻', cls: 'cell unexec' }
+  pass: { label: 'pass', sym: '✓', cls: 'pass' },
+  fail: { label: 'fail', sym: '✗', cls: 'fail' },
+  unexecuted: { label: 'not executed', sym: '◻', cls: 'unexec' }
 }
 
 const TYPE_LABEL = {
   repair: 'constrained repair',
-  report: 'stale/contradictory report',
+  report: 'stale / contradictory report',
   escalate: 'calibration trap'
 }
 
-// The 7-step pipeline every scenario runs. who: YOU = user-provided credential,
-// BUILT-IN = ships with the product, MODEL = the model itself.
+const PROVIDER_SUGGESTIONS = {
+  gemini: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+  groq: ['llama-3.3-70b-versatile', 'deepseek-r1-distill-llama-70b', 'llama-3.1-8b-instant'],
+  nebius: ['meta-llama/Meta-Llama-3.3-70B-Instruct', 'deepseek-ai/DeepSeek-R1'],
+  openrouter: ['deepseek/deepseek-r1:free', 'meta-llama/llama-3.3-70b-instruct:free'],
+  ollama: [],
+  custom: []
+}
+
+const MODEL_HINT = (provider, ollamaModels) => ({
+  gemini: 'gemini-2.5-flash — copy the exact model id from AI Studio',
+  groq: 'llama-3.3-70b-versatile — copy the id from console.groq.com',
+  nebius: 'meta-llama/Meta-Llama-3.3-70B-Instruct — copy the id from studio.nebius.ai',
+  openrouter: 'deepseek/deepseek-r1:free — copy the id from openrouter.ai/models',
+  ollama: ollamaModels[0] || 'qwen2.5-coder:3b-8k',
+  custom: 'model id for your custom endpoint'
+}[provider] || 'model id')
+
+const CRED_DEFS = [
+  { key: 'GROQ_API_KEY', label: 'Groq', role: 'model provider', hint: 'console.groq.com/keys' },
+  { key: 'GEMINI_API_KEY', label: 'Gemini', role: 'model provider', hint: 'aistudio.google.com/apikey' },
+  { key: 'NEBIUS_API_KEY', label: 'Nebius', role: 'model provider', hint: 'studio.nebius.ai' },
+  { key: 'OPENROUTER_API_KEY', label: 'OpenRouter', role: 'model provider', hint: 'openrouter.ai/keys' },
+  { key: 'DAYTONA_API_KEY', label: 'Daytona', role: 'execution sandbox — pipeline step 5', hint: 'app.daytona.io/api' }
+]
+
+/* every scenario, for every model, runs this exact pipeline */
 const PIPELINE = [
-  { id: 'prompt', title: '1 · Build the prompt', who: 'BUILT-IN', cred: null,
-    desc: 'The task brief, the task\'s repo files (the bug is in there), and the response contract are assembled into one prompt. Nothing else is added — no hidden hints.' },
-  { id: 'send', title: '2 · Send to the model', who: 'YOU · provider key', cred: 'Gemini / Groq / Nebius / OpenRouter key (none needed for local Ollama)',
+  { id: 'prompt', title: 'Build the prompt', who: 'BUILT-IN', cred: null,
+    desc: 'The task brief, the task\'s repo files (the bug is in there) and the response contract are assembled into one prompt. Nothing hidden.' },
+  { id: 'send', title: 'Send to the model', who: 'YOU · provider key', cred: 'Gemini / Groq / Nebius / OpenRouter key — none needed for local Ollama',
     desc: 'One HTTP call to the provider\'s OpenAI-compatible endpoint at temperature 0.' },
-  { id: 'response', title: '3 · Model answers', who: 'THE MODEL', cred: null,
-    desc: 'Exactly one verdict: REPAIR (full file contents) on repair tasks, REPORT (the stale fact) on wrong bug reports, ESCALATE (the missing decision) on traps.' },
-  { id: 'policy', title: '4 · Policy checks', who: 'BUILT-IN', cred: null,
+  { id: 'response', title: 'Model answers', who: 'THE MODEL', cred: null,
+    desc: 'Exactly one verdict: REPAIR (full file contents) on repairs, REPORT (the stale fact) on wrong bug reports, ESCALATE (the missing decision) on traps.' },
+  { id: 'policy', title: 'Policy checks', who: 'BUILT-IN', cred: null,
     desc: 'Protected files byte-identical, diff within budget, no new third-party imports, no secret patterns. Any violation = fail, before anything executes.' },
-  { id: 'sandbox', title: '5 · Sandbox execution', who: 'YOU · Daytona key (optional)', cred: 'Without a Daytona key this step is skipped and repair trials stay "not executed"',
-    desc: 'The repair runs in an isolated Daytona cloud sandbox: network blocked, expected outputs absent from the sandbox, deleted after use.' },
-  { id: 'compare', title: '6 · Black-box compare', who: 'BUILT-IN', cred: null,
-    desc: 'The sandbox returns stdout only. Your machine compares it with the expected outputs — which never left your machine.' },
-  { id: 'grade', title: '7 · Evidence', who: 'BUILT-IN', cred: null,
+  { id: 'sandbox', title: 'Sandbox execution', who: 'YOU · Daytona key (optional)', cred: 'Without a Daytona key this step is skipped and repair trials stay "not executed"',
+    desc: 'The repair runs in an isolated Daytona cloud sandbox: network blocked, expected outputs absent, deleted after use.' },
+  { id: 'compare', title: 'Black-box compare', who: 'BUILT-IN', cred: null,
+    desc: 'The sandbox returns stdout only. Your machine compares it against expected outputs that never left it.' },
+  { id: 'grade', title: 'Evidence', who: 'BUILT-IN', cred: null,
     desc: 'The outcome lands in the grid, evidence table and transcript files. Every claim traces to a raw transcript.' }
 ]
 
+/* ─────────────────────────── helpers ─────────────────────────── */
+
 function providerFor(baseUrl) {
-  if (/generativelanguage/i.test(baseUrl)) return 'gemini-api'
+  if (/generativelanguage/i.test(baseUrl)) return 'gemini'
   if (/groq/i.test(baseUrl)) return 'groq'
+  if (/nebius/i.test(baseUrl)) return 'nebius'
+  if (/openrouter/i.test(baseUrl)) return 'openrouter'
   if (/localhost|127\.0\.0\.1/i.test(baseUrl)) return 'ollama-local'
   return 'hosted-unverified'
 }
 
 function slugify(model) {
-  return (String(model || 'unknown')).replace(/[^A-Za-z0-9._-]/g, '-') || 'model'
+  return String(model || 'unknown').replace(/[^A-Za-z0-9._-]/g, '-') || 'model'
 }
 
-// Split a built prompt into its labeled sections for the inspector.
 function parsePrompt(prompt) {
   const p = String(prompt || '')
   const iReq = p.indexOf('## Request')
   const iRepo = p.indexOf('## Repository (inlined)')
   const iContract = p.indexOf('## Required response format')
-  if (iReq < 0 || iRepo < 0 || iContract < 0) {
-    return { header: '', request: p, repository: '', contract: '', raw: true }
-  }
+  if (iReq < 0 || iRepo < 0 || iContract < 0) return { request: p, repository: '', contract: '' }
   return {
-    header: p.slice(0, iReq).trim(),
-    request: p.slice(iReq + '## Request'.length, iRepo).trim(),
-    repository: p.slice(iRepo + '## Repository (inlined)'.length, iContract).trim(),
-    contract: p.slice(iContract + '## Required response format'.length).trim()
+    request: p.slice(iReq + 10, iRepo).trim(),
+    repository: p.slice(iRepo + 22, iContract).trim(),
+    contract: p.slice(iContract + 27).trim()
   }
 }
 
@@ -64,14 +91,10 @@ function parseFiles(repoText) {
   const files = []
   const re = /===== FILE: (.+?) =====\n([\s\S]*?)===== END FILE =====/g
   let m
-  while ((m = re.exec(repoText)) !== null) {
-    files.push({ path: m[1], content: m[2].replace(/\n$/, '') })
-  }
+  while ((m = re.exec(repoText)) !== null) files.push({ path: m[1], content: m[2].replace(/\n$/, '') })
   return files
 }
 
-// Task status within a scenario: pass if any trial passed, else fail if any
-// trial failed, else unexecuted if any trial was policy-clean but not run.
 function taskStatus(scenario, taskId) {
   let saw = null
   for (const t of scenario.trials) {
@@ -95,17 +118,183 @@ function deltaVs(prev, cur, tasks) {
   return { improved, regressed, same }
 }
 
-const CRED_DEFS = [
-  { key: 'GROQ_API_KEY', label: 'Groq — model provider', hint: 'get a key: https://console.groq.com/keys' },
-  { key: 'GEMINI_API_KEY', label: 'Gemini — model provider', hint: 'get a key: https://aistudio.google.com/apikey' },
-  { key: 'NEBIUS_API_KEY', label: 'Nebius — model provider', hint: 'get a key: https://studio.nebius.ai' },
-  { key: 'OPENROUTER_API_KEY', label: 'OpenRouter — model provider', hint: 'get a key: https://openrouter.ai/keys' },
-  { key: 'DAYTONA_API_KEY', label: 'Daytona — execution sandbox (pipeline step 5)', hint: 'get a key: https://app.daytona.io/api' }
-]
+function outcomeOf(response) {
+  return /VERDICT:/.test(String(response || '')) ? 'unexecuted' : 'fail'
+}
 
-function TermLine({ ev, onOpen, model }) {
+/* ─────────────────────── small UI components ─────────────────────── */
+
+function Badge({ kind, children }) {
+  return <span className={'badge ' + kind}>{children}</span>
+}
+
+function Dot({ tone }) {
+  return <i className={'dot ' + tone} />
+}
+
+function StatCard({ label, value, sub }) {
+  return (
+    <div className="card stat">
+      <div className="muted">{label}</div>
+      <div className="big tabular">{value}</div>
+      {sub && <div className="muted small">{sub}</div>}
+    </div>
+  )
+}
+
+function WhoBadge({ who }) {
+  const tone = who.startsWith('YOU') ? 'you' : 'builtin'
+  return <span className={'who ' + tone}>{who}</span>
+}
+
+/* ─────────────────────── feature components ─────────────────────── */
+
+function TaskGrid({ data, scenario, maxTrials, cellFor, onInspect }) {
+  return (
+    <table className="grid">
+      <thead>
+        <tr>
+          <th className="num">#</th>
+          <th>Task</th>
+          <th>Tests</th>
+          <th>Expected</th>
+          <th className="center" colSpan={Math.max(maxTrials, 1)}>Trials</th>
+        </tr>
+      </thead>
+      <tbody>
+        {data.tasks.map((t, i) => (
+          <tr key={t.id}>
+            <td className="num muted">{i + 1}</td>
+            <td>
+              <div className="title">{t.title}</div>
+              <div className="muted small"><code>{t.id}</code> · {t.probes}</div>
+            </td>
+            <td><Badge kind={t.type}>{TYPE_LABEL[t.type]}</Badge></td>
+            <td className="small expected">{t.expected}</td>
+            <td className="center" colSpan={Math.max(maxTrials, 1)}>
+              <div className="cells" style={{ gridTemplateColumns: `repeat(${Math.max(maxTrials, 1)}, 52px)` }}>
+                {Array.from({ length: Math.max(maxTrials, 1) }, (_, k) => k + 1).map(n => {
+                  const { state, cell } = cellFor(t, n)
+                  if (state === 'live-start') {
+                    return <button key={n} className="cell live" title={`Trial ${n}: probing now…`}>◌</button>
+                  }
+                  const c = state === 'data' || state === 'live-done' ? cell : null
+                  const st = c ? (OUT[c.outcome] || { cls: 'fail', sym: '✗', label: c.outcome || 'ungraded' }) : null
+                  return (
+                    <button
+                      key={n}
+                      className={c ? 'cell clickable ' + st.cls : 'cell notrun'}
+                      title={c ? `Trial ${n}: ${st.label} — click to inspect` : `Trial ${n}: not run`}
+                      onClick={() => c && onInspect(t, n, scenario.model,
+                        { outcome: c.outcome, reason: c.reason, checks: c.checks, verdict: c.verdict })}
+                    >
+                      {c ? st.sym : '—'}
+                    </button>
+                  )
+                })}
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function InspectorModal({ inspector, onClose }) {
+  if (!inspector) return null
+  const rec = inspector.record
+  const sections = rec ? parsePrompt(rec.prompt) : null
+  const files = rec ? parseFiles(sections.repository) : []
+  const graded = rec ? (inspector.prefill && inspector.prefill.outcome
+    ? { outcome: inspector.prefill.outcome, reason: inspector.prefill.reason || '', checks: inspector.prefill.checks || {},
+        verdict: inspector.prefill.verdict || String(rec.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—' }
+    : { outcome: outcomeOf(rec.response), reason: 'grading summary lands with the export — raw response below',
+        checks: {}, verdict: String(rec.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—' }) : null
+  return (
+    <div className="overlay" onClick={onClose}>
+      <section className="detail modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+        <button className="closebtn" onClick={onClose} aria-label="Close inspector">✕</button>
+        {inspector.loading && <span className="muted">Loading transcript…</span>}
+        {inspector.error && <span className="bad">Transcript error: {inspector.error}</span>}
+        {rec && (
+          <>
+            <h2>{inspector.task.title} <span className="muted">— trial {inspector.trial} · {inspector.model}</span></h2>
+            <div className="kv">
+              <Badge kind={graded.outcome}>{(OUT[graded.outcome] || { label: graded.outcome }).label}</Badge>
+              <span>model verdict: <b>{graded.verdict}</b></span>
+              <span>expected: <b>{inspector.task.type.toUpperCase()}</b></span>
+              {rec.latency_s != null && <span>{rec.latency_s}s</span>}
+              {rec.usage && rec.usage.total_tokens ? <span>{rec.usage.total_tokens} tokens</span> : null}
+            </div>
+
+            <h3>1 · What was sent to the model</h3>
+            <div className="muted small">
+              POST <code>{rec.base_url}/chat/completions</code> · model <code>{rec.model}</code> ·
+              temperature <code>{String(rec.temperature)}</code> · {rec.prompt.length} chars ·
+              sha256 <code>{String(rec.prompt_sha256).slice(0, 16)}…</code> · sent {rec.date_utc}
+            </div>
+            <pre className="block">{sections.request}</pre>
+            <details className="raw">
+              <summary>Inlined repository files ({files.length}) — click to expand each</summary>
+              {files.map(f => (
+                <details key={f.path} className="fileblock">
+                  <summary><code>{f.path}</code></summary>
+                  <pre>{f.content}</pre>
+                </details>
+              ))}
+            </details>
+            <details className="raw">
+              <summary>Response contract the model must follow</summary>
+              <pre>{sections.contract}</pre>
+            </details>
+            <details className="raw">
+              <summary>Show the full raw prompt ({rec.prompt.length} chars)</summary>
+              <pre>{rec.prompt}</pre>
+            </details>
+
+            <h3>2 · What the model answered</h3>
+            {rec.error && <p className="bad">Endpoint error: {rec.error}</p>}
+            <pre>{rec.response || '(empty response)'}</pre>
+
+            <h3>3 · How the grader judged it</h3>
+            <p><b>Grader:</b> {graded.reason || '—'}</p>
+            <p>
+              <b>Checks:</b>{' '}
+              {Object.keys(graded.checks || {}).length === 0
+                ? 'full check list appears after the export for live runs'
+                : Object.entries(graded.checks).map(([k, v]) => (
+                    <span key={k} className={'check ' + (v ? 'ok' : 'bad')}>{k}: {v ? 'ok' : 'FAILED'}</span>
+                  ))}
+            </p>
+            {graded.outcome === 'unexecuted' && (
+              <p className="muted small">
+                Read gray as three steps: (1) the model did produce a repair — see it above;
+                (2) every policy check passed; (3) tests were never run because no verified
+                sandbox exists — promising, but unproven.
+              </p>
+            )}
+            {graded.outcome === 'fail' && inspector.task.type !== 'repair' && (
+              <p className="muted small">
+                Calibration failure: the model answered "{graded.verdict}" but the task needed{' '}
+                {inspector.task.type.toUpperCase()} — it should have stopped and reported the
+                mismatch instead of producing an answer. That gap is exactly what this eval measures.
+              </p>
+            )}
+            <p className="muted small">
+              What a correct answer looks like: {inspector.task.expected}. Full raw payloads:{' '}
+              <code>transcripts/{inspector.task.id}__{slugify(inspector.model)}__trial{String(inspector.trial).padStart(2, '0')}.json</code>
+            </p>
+          </>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function TermLine({ ev, onInspect, model }) {
   const [open, setOpen] = useState(false)
-  const [fetched, setFetched] = useState(null) // {loading, record, error}
+  const [fetched, setFetched] = useState(null)
   const t = ev.utc || ''
 
   function ensureRecord() {
@@ -120,11 +309,7 @@ function TermLine({ ev, onOpen, model }) {
   function toggle() { setOpen(o => !o); if (!open) ensureRecord() }
 
   if (ev.kind === 'run-start') {
-    return (
-      <div className="tline dim">
-        ── run start · {ev.model} · {ev.trials} trial(s) · {ev.tasks ? ev.tasks.length + ' test cases: ' + ev.tasks.join(', ') : ''} ──
-      </div>
-    )
+    return <div className="tline dim">── run start · {ev.model} · {ev.trials} trial(s) · {ev.tasks ? ev.tasks.length + ' test cases: ' + ev.tasks.join(', ') : ''} ──</div>
   }
   if (ev.kind === 'start') {
     return (
@@ -132,7 +317,7 @@ function TermLine({ ev, onOpen, model }) {
         <span className="t">{t}</span>▶ SEND {ev.task} · trial {ev.trial} · prompt {ev.prompt_chars || '?'} chars
         {open && (
           <div className="tpayload">
-            {fetchState === null && '(click again — loading…)'}
+            {fetchState === null && '(loading…)'}
             {fetchState && fetchState.loading && 'loading transcript…'}
             {fetchState && fetchState.error && 'not available yet: ' + fetchState.error}
             {fetchState && fetchState.record && (() => {
@@ -141,9 +326,9 @@ function TermLine({ ev, onOpen, model }) {
                 <>
                   <div>PROMPT SECTION 1 — REQUEST (what the model is asked):</div>
                   <pre>{s.request}</pre>
-                  <div>PROMPT SECTION 2 — INLINED REPO FILES (the bug is in here): {parseFiles(s.repository).map(f => f.path).join(', ')}</div>
-                  <div>PROMPT SECTION 3 — RESPONSE CONTRACT: VERDICT: REPAIR / REPORT / ESCALATE</div>
-                  <button className="linklike" onClick={e => { e.stopPropagation(); onOpen && onOpen(ev.task, ev.trial, null) }}>open full inspector ↗</button>
+                  <div>PROMPT SECTION 2 — INLINED REPO FILES: {parseFiles(s.repository).map(f => f.path).join(', ')}</div>
+                  <div>PROMPT SECTION 3 — RESPONSE CONTRACT: VERDICT REPAIR / REPORT / ESCALATE</div>
+                  <button className="linklike" onClick={e => { e.stopPropagation(); onInspect(ev.task, ev.trial, model, null) }}>open full inspector ↗</button>
                 </>
               )
             })()}
@@ -155,21 +340,21 @@ function TermLine({ ev, onOpen, model }) {
   if (ev.kind === 'done') {
     const graded = ev.outcome === 'pass' || ev.outcome === 'fail' || ev.outcome === 'unexecuted'
     return (
-      <div className="tline recv clickable" onClick={toggle} title="click to see the model's full answer and the grading">
+      <div className="tline recv clickable" onClick={toggle} title="click to see the model's full answer">
         <span className="t">{t}</span>◀ {ev.task} · trial {ev.trial} · {ev.latency != null ? ev.latency + 's' : '—'}{ev.tokens ? ' · ' + ev.tokens + ' tok' : ''}
         {' · model verdict: ' + (ev.verdict || '?')}
         {graded && <span className={ev.outcome === 'pass' ? ' ok' : ev.outcome === 'fail' ? ' bad' : ' dim'}> · GRADED {ev.outcome.toUpperCase()}</span>}
         {ev.reason ? <span className="dim"> — {ev.reason}</span> : null}
         {open && (
           <div className="tpayload">
-            {fetchState === null && '(click again — loading…)'}
+            {fetchState === null && '(loading…)'}
             {fetchState && fetchState.loading && 'loading transcript…'}
             {fetchState && fetchState.error && 'not available yet: ' + fetchState.error}
             {fetchState && fetchState.record && (
               <>
                 <div>FULL MODEL ANSWER:</div>
                 <pre>{fetchState.record.response || '(empty response)'}</pre>
-                <button className="linklike" onClick={e => { e.stopPropagation(); onOpen && onOpen(ev.task, ev.trial, { outcome: ev.outcome, reason: ev.reason }) }}>open full inspector ↗</button>
+                <button className="linklike" onClick={e => { e.stopPropagation(); onInspect(ev.task, ev.trial, model, { outcome: ev.outcome, reason: ev.reason }) }}>open full inspector ↗</button>
               </>
             )}
           </div>
@@ -205,6 +390,123 @@ function TermLine({ ev, onOpen, model }) {
   return null
 }
 
+function TerminalView({ runState, termLines, data, onInspect }) {
+  const termRef = useRef(null)
+  const eventsCount = runState ? (runState.events || []).length : 0
+  const model = (runState && runState.config && runState.config.model) || 'unknown'
+  useEffect(() => {
+    if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight
+  }, [eventsCount])
+  return (
+    <main>
+      <section className="detail">
+        <h2>Run terminal</h2>
+        <p className="muted small">
+          What the runner sends, what the model answers, and how the trusted grader judges
+          it — one block per trial, live during a run. Click a line to expand it; click
+          "open full inspector" for the complete record.
+        </p>
+        <div className="terminal" ref={termRef}>
+          {termLines.length
+            ? termLines.map((ev, i) => <TermLine key={i} ev={ev} model={model} onInspect={onInspect} />)
+            : <div className="tline dim">no run events yet — launch one from the "+ Run Scenario" tab</div>}
+        </div>
+      </section>
+    </main>
+  )
+}
+
+function HowItWorks({ stepStatus, providers, sandboxOk, ollamaModels }) {
+  const modelKeyStatus = providers.filter(p => p.key_url)
+    .map(p => p.name + ': ' + (p.has_key ? '✓' : '✗')).join(' · ')
+  return (
+    <main>
+      <section className="detail">
+        <h2>How a scenario runs — the 7-step pipeline</h2>
+        <p className="muted small">
+          Every scenario, for every model, runs this exact pipeline — 10 tasks per trial
+          round, nothing hidden. Status chips go LIVE as a run progresses.
+        </p>
+        <div className="pipeline">
+          {PIPELINE.map(s => {
+            const st = stepStatus(s.id)
+            return (
+              <div key={s.id} className={'pstep' + (st === 'live' ? ' live' : st === 'done' ? ' done' : '')}>
+                <div className="pstep-head">
+                  <b>{s.title}</b>
+                  <WhoBadge who={s.who} />
+                </div>
+                <div className="muted small">{s.desc}</div>
+                {s.cred && <div className="cred small"><b>Credential:</b> {s.cred}</div>}
+                <div className={'small statuschip ' + st}>
+                  {st === 'live' ? '● LIVE' : st === 'done' ? '✓ done' : '· idle'}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      <section className="detail">
+        <h2>Credentials — who provides what</h2>
+        <table className="grid">
+          <thead>
+            <tr><th>Credential / component</th><th>Who provides it</th><th>Needed for</th><th>Status right now</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Model provider key</td>
+              <td><WhoBadge who="YOU" /></td>
+              <td>Steps 2–3 — every model call (pick any one provider per scenario)</td>
+              <td className={/✗/.test(modelKeyStatus) ? 'small' : 'small oktext'}>{modelKeyStatus || '—'}</td>
+            </tr>
+            <tr>
+              <td>Daytona key (cloud sandbox)</td>
+              <td><WhoBadge who="YOU (optional)" /></td>
+              <td>Step 5 only — executing repairs. Without it, repair trials stay honestly "not executed"</td>
+              <td className="small">{sandboxOk === null ? '…' : sandboxOk
+                ? <span className="oktext">✓ present — repairs will execute</span>
+                : <span>✗ absent — step skipped</span>}</td>
+            </tr>
+            <tr>
+              <td>Local Ollama models</td>
+              <td><WhoBadge who="YOUR machine (no key)" /></td>
+              <td>Local scenarios (1–2)</td>
+              <td className="small">{ollamaModels.length ? ollamaModels.length + ' installed' : 'none found'}</td>
+            </tr>
+            <tr>
+              <td>10 tasks + trusted grader + expected outputs</td>
+              <td><WhoBadge who="BUILT-IN" /></td>
+              <td>Every step</td>
+              <td className="small oktext">✓ shipped in this repo — expected outputs never leave your machine</td>
+            </tr>
+          </tbody>
+        </table>
+        <p className="muted small">
+          Manage keys in the <b>⚙ Settings</b> tab — they are stored in the gitignored
+          <code> .env</code> on your machine and never leave it except as the credential
+          itself, in the request that needs it.
+        </p>
+      </section>
+    </main>
+  )
+}
+
+function stepStatus(id) {
+  return (lastEvent, running) => {
+    if (!lastEvent || !running) return 'idle'
+    const activeByKind = { start: 'send', done: 'response', 'export-start': 'policy', grading: 'sandbox', graded: 'grade', 'export-done': 'grade' }
+    const active = activeByKind[lastEvent.kind]
+    if (!active) return 'idle'
+    if (id === 'prompt') return 'done'
+    const myIdx = PIPELINE.findIndex(p => p.id === id)
+    const actIdx = PIPELINE.findIndex(p => p.id === active)
+    if (myIdx < actIdx) return 'done'
+    if (myIdx === actIdx) return lastEvent.kind === 'graded' || lastEvent.kind === 'export-done' ? 'done' : 'live'
+    return 'idle'
+  }
+}
+
 export default function App() {
   const [data, setData] = useState(null)
   const [scenarioIdx, setScenarioIdx] = useState(0)
@@ -212,11 +514,8 @@ export default function App() {
   const [inspector, setInspector] = useState(null)
   const [runState, setRunState] = useState(null)
   const [form, setForm] = useState({
-    provider: 'groq',
-    model: '',
-    trials: 3,
-    baseUrl: 'http://localhost:11434/v1',
-    apiKey: ''
+    provider: 'groq', model: '', trials: 3,
+    baseUrl: 'http://localhost:11434/v1', apiKey: ''
   })
   const [ollamaModels, setOllamaModels] = useState([])
   const [providers, setProviders] = useState([])
@@ -234,7 +533,7 @@ export default function App() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // live state polling - while a run is active this is the real-time feed
+  // live polling — while a run is active this is the real-time feed
   useEffect(() => {
     let alive = true
     const tick = async () => {
@@ -243,9 +542,7 @@ export default function App() {
         if (!res.ok) return
         const st = await res.json()
         if (alive) setRunState(st)
-        if (wasRunning.current && !st.running) {
-          await loadData() // run finished: refresh scenarios from fresh export
-        }
+        if (wasRunning.current && !st.running) await loadData()
         wasRunning.current = st.running
       } catch { /* server offline */ }
     }
@@ -254,7 +551,6 @@ export default function App() {
     return () => { alive = false; clearInterval(id) }
   }, [loadData])
 
-  // ollama model list + hosted provider key status + sandbox availability
   useEffect(() => {
     fetch('/api/models').then(r => r.json()).then(d => setOllamaModels(d.models || [])).catch(() => {})
     fetch('/api/providers').then(r => r.json()).then(d => {
@@ -263,32 +559,6 @@ export default function App() {
     }).catch(() => {})
   }, [])
 
-  function fetchCreds() {
-    fetch('/api/credentials').then(r => r.json()).then(d => setCreds(d.credentials || {})).catch(() => {})
-  }
-
-  function saveCred(key) {
-    const value = credDraft[key]
-    if (!value) return
-    fetch('/api/credentials', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates: { [key]: value } })
-    }).then(r => r.json()).then(d => {
-      if (d.credentials) setCreds(d.credentials)
-      setSavedFlash(f => ({ ...f, [key]: true }))
-      setCredDraft(dr => ({ ...dr, [key]: '' }))
-      // refresh provider/sandbox status so the whole UI reflects the new key
-      fetch('/api/providers').then(r => r.json()).then(x => {
-        setProviders(x.providers || [])
-        setSandboxOk(!!x.sandbox_available)
-      }).catch(() => {})
-    }).catch(() => {})
-  }
-
-  // live overlay: events from an in-flight run color cells as responses land.
-  // Only applied to the scenario whose model the run targets.
-  // (Rules of Hooks: every hook must run before the early return below.)
   const live = useMemo(() => {
     const m = {}
     let maxT = 0
@@ -306,13 +576,6 @@ export default function App() {
     }
     return { m, maxT }
   }, [runState])
-
-  // terminal auto-scroll + skip collapsing
-  const termRef = useRef(null)
-  const eventsCount = runState ? (runState.events || []).length : 0
-  useEffect(() => {
-    if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight
-  }, [eventsCount, view])
 
   const termLines = useMemo(() => {
     const all = runState ? (runState.events || []) : []
@@ -346,6 +609,8 @@ export default function App() {
   const delta = prev && scenario ? deltaVs(prev, scenario, data.tasks) : null
   const running = runState ? runState.running : false
   const lastEvents = runState ? (runState.events || []).slice(-10) : []
+  const lastEvent = lastEvents.length ? lastEvents[lastEvents.length - 1] : null
+  const getStepStatus = stepStatus()
   const liveActive = runState && runState.running && runState.config &&
     scenario && runState.config.model === scenario.model
   const trialCount = Math.max(
@@ -355,27 +620,13 @@ export default function App() {
   const maxTrials = trialCount
   const nextScenarioId = data.scenarios.length + 1
 
-  function stepStatus(id) {
-    const ev = lastEvents[lastEvents.length - 1]
-    if (!ev || !running) return 'idle'
-    const activeByKind = { start: 'send', done: 'response', 'export-start': 'policy', grading: 'sandbox', graded: 'grade', 'export-done': 'grade' }
-    const active = activeByKind[ev.kind]
-    if (!active) return 'idle'
-    if (id === 'prompt') return 'done'
-    const myIdx = PIPELINE.findIndex(p => p.id === id)
-    const actIdx = PIPELINE.findIndex(p => p.id === active)
-    if (myIdx < actIdx) return 'done'
-    if (myIdx === actIdx) return ev.kind === 'graded' || ev.kind === 'export-done' ? 'done' : 'live'
-    return 'idle'
-  }
-
   function cellFor(task, n) {
     const tr = scenario.trials[n - 1]
     const dataCell = tr ? tr.cells[task.id] : null
     if (dataCell) return { state: 'data', cell: dataCell }
     const lv = liveActive ? live.m[task.id + '#' + n] : null
     if (lv && lv.done && lv.outcome) {
-      return { state: 'live-done', cell: { outcome: lv.outcome, reason: lv.reason || '', verdict: '—', checks: {}, excerpt: '(grading detail lands with the final export)' } }
+      return { state: 'live-done', cell: { outcome: lv.outcome, reason: lv.reason || '', verdict: '—', checks: {}, excerpt: '' } }
     }
     if (lv && lv.start) return { state: 'live-start', cell: null }
     return { state: 'miss', cell: null }
@@ -394,8 +645,7 @@ export default function App() {
       }
       const record = await res.json()
       setInspector(ins => ins && ins.task.id === task.id && ins.trial === trial
-        ? { ...ins, loading: false, record }
-        : ins)
+        ? { ...ins, loading: false, record } : ins)
     } catch (err) {
       setInspector(ins => ins && { ...ins, loading: false, error: String(err) })
     }
@@ -407,11 +657,8 @@ export default function App() {
       await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          base_url: form.baseUrl,
-          model: scenario.model,
-          trials: scenario.trials.length + 1
-        })
+        body: JSON.stringify({ provider: 'ollama', base_url: form.baseUrl,
+          model: scenario.model, trials: scenario.trials.length + 1 })
       })
     } finally {
       setStarting(false)
@@ -427,7 +674,7 @@ export default function App() {
         payload.base_url = form.baseUrl
         payload.api_key = form.apiKey
       } else if (form.provider !== 'ollama') {
-        payload.api_key = form.apiKey // optional override; server falls back to .env
+        payload.api_key = form.apiKey
       }
       const res = await fetch('/api/run', {
         method: 'POST',
@@ -436,369 +683,104 @@ export default function App() {
       })
       const body = await res.json()
       if (!res.ok) alert('Run rejected: ' + (body.error || res.status))
-      else setView('results')
+      else { setView('results'); fetchCredsLite() }
     } finally {
       setStarting(false)
     }
   }
 
-  const MODEL_HINT = {
-    gemini: 'gemini-2.5-flash — copy the exact model id from AI Studio',
-    groq: 'llama-3.3-70b-versatile — copy the id from console.groq.com',
-    nebius: 'meta-llama/Meta-Llama-3.3-70B-Instruct — copy the id from studio.nebius.ai',
-    openrouter: 'deepseek/deepseek-r1:free — copy the id from openrouter.ai/models',
-    ollama: ollamaModels[0] || 'qwen2.5-coder:3b-8k',
-    custom: 'model id for your custom endpoint'
-  }
-  const SUGGESTED = {
-    gemini: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-    groq: ['llama-3.3-70b-versatile', 'deepseek-r1-distill-llama-70b', 'llama-3.1-8b-instant'],
-    nebius: ['meta-llama/Meta-Llama-3.3-70B-Instruct', 'deepseek-ai/DeepSeek-R1'],
-    openrouter: ['deepseek/deepseek-r1:free', 'meta-llama/llama-3.3-70b-instruct:free'],
-    ollama: ollamaModels,
-    custom: []
-  }
-  const chosenProvider = providers.find(p => p.name === form.provider)
-  const needsHostedKey = form.provider !== 'ollama' && form.provider !== 'custom' &&
-    chosenProvider && !chosenProvider.has_key
+  function fetchCredsLite() { /* providers/sandbox refresh happens via polling of /api/providers on next settings visit */ }
 
-  function gradedOf(prefill, record) {
-    const responseVerdict = String(record && record.response || '').match(/VERDICT:\s*(\w+)/)?.[1] || '—'
-    if (prefill && prefill.outcome) {
-      return {
-        outcome: prefill.outcome,
-        reason: prefill.reason || '',
-        checks: prefill.checks || {},
-        verdict: prefill.verdict || responseVerdict
-      }
+  async function saveCred(key) {
+    const value = credDraft[key]
+    if (!value) return
+    const res = await fetch('/api/credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates: { [key]: value } })
+    })
+    const d = await res.json()
+    if (d.credentials) {
+      setCreds(d.credentials)
+      setSavedFlash(f => ({ ...f, [key]: true }))
+      setCredDraft(dr => ({ ...dr, [key]: '' }))
+      fetch('/api/providers').then(r => r.json()).then(x => {
+        setProviders(x.providers || [])
+        setSandboxOk(!!x.sandbox_available)
+      }).catch(() => {})
     }
-    if (record) {
-      return {
-        outcome: /VERDICT:/.test(String(record.response || '')) ? 'unexecuted' : 'fail',
-        reason: 'grading summary lands with the export — raw response below',
-        checks: {},
-        verdict: responseVerdict
-      }
-    }
-    return null
   }
+
+  function fetchCreds() {
+    fetch('/api/credentials').then(r => r.json()).then(d => setCreds(d.credentials || {})).catch(() => {})
+  }
+
+  const tabs = [
+    ...data.scenarios.map((s, i) => ({ id: 's' + i, label: `Scenario ${s.id} · ${s.model}` })),
+    { id: 'how', label: 'How it works' },
+    { id: 'terminal', label: 'Terminal' },
+    { id: 'run', label: `+ Run Scenario ${nextScenarioId}` },
+    { id: 'settings', label: '⚙ Settings' }
+  ]
+  const activeTab = view === 'results' ? 's' + scenarioIdx : view
 
   return (
     <div className="app">
-      <header>
+      <header className="app-header">
         <h1>Safe Repair Agent — scenario dashboard</h1>
         <p className="muted">
-          A scenario is one experimental configuration (the subject model), run live
-          against real endpoints. Within a scenario, trials are independent repeats at
-          temperature 0 on identical tasks. Generated {data.generated_utc}.
+          A scenario is one experimental configuration (the subject model), run live against
+          real endpoints. Within a scenario, trials are independent repeats at temperature 0
+          on identical tasks. Generated {data.generated_utc}.
         </p>
         <div className="legend">
-          <span><i className="dot pass" /> pass — graded correct</span>
-          <span><i className="dot fail" /> fail — wrong verdict or constraint violation</span>
-          <span><i className="dot unexec" /> not executed — repair was policy-clean but no sandbox exists (not a failure, not a pass)</span>
-          <span><i className="dot notrun" /> not run</span>
+          <span><Dot tone="pass" /> pass — graded correct</span>
+          <span><Dot tone="fail" /> fail — wrong verdict or constraint violation</span>
+          <span><Dot tone="unexec" /> not executed — policy-clean repair, no sandbox (not a failure, not a pass)</span>
+          <span><Dot tone="notrun" /> not run</span>
         </div>
+        <nav className="tabs" aria-label="Views">
+          {tabs.map(tb => (
+            <button
+              key={tb.id}
+              className={'tab' + (activeTab === tb.id ? ' active' : '')}
+              onClick={() => {
+                if (tb.id.startsWith('s')) {
+                  setScenarioIdx(Number(tb.id.slice(1)))
+                  setView('results')
+                } else {
+                  setView(tb.id)
+                  if (tb.id === 'settings') fetchCreds()
+                }
+              }}
+            >
+              {tb.label}
+            </button>
+          ))}
+        </nav>
       </header>
 
-      <nav className="tabs" aria-label="Scenario">
-        {data.scenarios.map((s, i) => (
-          <button
-            key={s.id}
-            className={'tab' + (i === scenarioIdx && view === 'results' ? ' active' : '')}
-            onClick={() => { setScenarioIdx(i); setView('results'); setInspector(null) }}
-          >
-            Scenario {s.id} · {s.model}
-          </button>
-        ))}
-        <button
-          className={'tab' + (view === 'how' ? ' active' : '')}
-          onClick={() => setView('how')}
-        >
-          How it works
-        </button>
-        <button
-          className={'tab' + (view === 'how' ? ' active' : '')}
-          onClick={() => setView('how')}
-        >
-          How it works
-        </button>
-        <button
-          className={'tab' + (view === 'terminal' ? ' active' : '')}
-          onClick={() => setView('terminal')}
-        >
-          Terminal
-        </button>
-        <button
-          className={'tab' + (view === 'settings' ? ' active' : '')}
-          onClick={() => { setView('settings'); fetchCreds() }}
-        >
-          ⚙ Settings
-        </button>
-      </nav>
-
-      {view === 'settings' && (
-        <main>
-          <section className="detail">
-            <h2>⚙ Credentials — bring your own keys</h2>
-            <p className="muted small">
-              Keys are stored in the gitignored <code>.env</code> on your machine and
-              resolved server-side — they are never rendered back here, only their last
-              4 characters. Everything else (the 10 tasks, the trusted grader, the
-              expected outputs) is built in and needs no credentials.
-            </p>
-            {CRED_DEFS.map(c => (
-              <div className="credrow" key={c.key}>
-                <div className="credinfo">
-                  <b>{c.label}</b>
-                  <div className="muted small">
-                    status: {creds[c.key]
-                      ? (creds[c.key].present ? '✓ set (' + creds[c.key].masked + ')' : 'not set')
-                      : '…'}{' '}
-                    · {c.hint}
-                  </div>
-                </div>
-                <input
-                  type="password"
-                  placeholder="paste key…"
-                  value={credDraft[c.key] || ''}
-                  onChange={e => setCredDraft({ ...credDraft, [c.key]: e.target.value })}
-                />
-                <button className="runbtn small" disabled={!credDraft[c.key]} onClick={() => saveCred(c.key)}>
-                  Save
-                </button>
-                {savedFlash[c.key] && <span className="small oktext">saved ✓</span>}
-              </div>
-            ))}
-            <p className="muted small">
-              Saved keys appear as ✓ in the provider dropdown of the Run tab and turn on
-              sandbox execution automatically (Daytona). No restart needed.
-            </p>
-          </section>
-        </main>
-      )}
-
       {view === 'how' && (
-        <main>
-          <section className="detail">
-            <h2>How a scenario runs — the 7-step pipeline</h2>
-            <p className="muted small">
-              Every scenario, for every model, runs this exact pipeline — 10 tasks per
-              trial round, nothing hidden. Status chips go LIVE as the current run
-              progresses through the steps.
-            </p>
-            <div className="pipeline">
-              {PIPELINE.map(s => {
-                const st = stepStatus(s.id)
-                return (
-                  <div key={s.id} className={'pstep' + (st === 'live' ? ' live' : st === 'done' ? ' done' : '')}>
-                    <div className="pstep-head">
-                      <b>{s.title}</b>
-                      <span className={'who ' + (s.who.startsWith('YOU') ? 'you' : 'builtin')}>{s.who}</span>
-                    </div>
-                    <div className="muted small">{s.desc}</div>
-                    {s.cred && <div className="cred small"><b>Credential:</b> {s.cred}</div>}
-                    <div className={'small statuschip ' + st}>{st === 'live' ? '● LIVE' : st === 'done' ? '✓ done' : st === 'idle' ? '· idle' : st}</div>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-
-          <section className="detail">
-            <h2>Credentials — who provides what</h2>
-            <table className="grid">
-              <thead>
-                <tr><th>Credential / component</th><th>Who provides it</th><th>Needed for</th><th>Status right now</th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Model provider key</td><td className="who you">YOU</td>
-                  <td>Steps 2–3 — every model call (pick any one provider per scenario)</td>
-                  <td>{data.scenarios.length >= 1 ? providers.filter(p => p.key_url).map(p => p.name + ': ' + (p.has_key ? '✓' : '✗')).join(' · ') || '—' : '—'}</td>
-                </tr>
-                <tr>
-                  <td>Daytona key (cloud sandbox)</td>
-                  <td className="who you">YOU (optional)</td>
-                  <td>Step 5 only — executing repairs. Without it, repair trials stay honestly "not executed"</td>
-                  <td>{sandboxOk === null ? '…' : sandboxOk ? '✓ present — repairs will execute' : '✗ absent — step skipped'}</td>
-                </tr>
-                <tr>
-                  <td>Local Ollama models</td>
-                  <td className="who you">YOUR machine (no key)</td>
-                  <td>Local scenarios (1–2)</td>
-                  <td>{ollamaModels.length ? ollamaModels.length + ' installed' : 'none found'}</td>
-                </tr>
-                <tr>
-                  <td>10 tasks + trusted grader + expected outputs</td>
-                  <td className="who builtin">BUILT-IN</td>
-                  <td>Every step</td>
-                  <td>✓ shipped in this repo — expected outputs never leave your machine</td>
-                </tr>
-              </tbody>
-            </table>
-          </section>
-        </main>
+        <HowItWorks
+          stepStatus={(id) => getStepStatus(id, lastEvent, running)}
+          providers={providers}
+          sandboxOk={sandboxOk}
+          ollamaModels={ollamaModels}
+        />
       )}
 
       {view === 'terminal' && (
-        <main>
-          <section className="detail">
-            <h2>Run terminal</h2>
-            <p className="muted small">
-              What the runner sends, what the model answers, and how the trusted grader
-              judges it — one block per trial, live during a run. Click a SEND or
-              RESPONSE line to open the full prompt, response, and grading in an inspector.
-            </p>
-            <div className="terminal" ref={termRef}>
-              {termLines.length
-                ? termLines.map((ev, i) => (
-                    <TermLine
-                      key={i}
-                      ev={ev}
-                      model={(runState && runState.config && runState.config.model) || 'unknown'}
-                      onOpen={(task, trial, prefill) => {
-                        const taskObj = data.tasks.find(t => t.id === task)
-                        openInspector(taskObj, trial, (runState && runState.config && runState.config.model) || 'unknown', prefill)
-                      }}
-                    />
-                  ))
-                : <div className="tline dim">no run events yet — launch one from the "+ Run Scenario" tab</div>}
-            </div>
-          </section>
-        </main>
+        <TerminalView runState={runState} termLines={termLines} data={data} onInspect={openInspector} />
       )}
 
       {view === 'run' && (
-        <main>
-          <section className="detail">
-            <h2>Run Scenario {nextScenarioId} live</h2>
-            <p className="muted small">
-              Same 10 tasks, same trusted grader, fresh transcripts (never overwritten).
-              One changed thing = this scenario's subject model/endpoint. Runs against any
-              OpenAI-compatible endpoint; keys stay in memory and are never logged or
-              committed.
-            </p>
-            <form className="runform" onSubmit={startRun}>
-              <label>
-                Provider (key resolved from .env — never sent to the browser)
-                <select
-                  value={form.provider}
-                  onChange={e => setForm({ ...form, provider: e.target.value, model: '' })}
-                >
-                  {providers.map(p => (
-                    <option key={p.name} value={p.name}>
-                      {p.name} {p.has_key || !p.key_url ? '· key ✓' : '· key missing'}
-                    </option>
-                  ))}
-                  <option value="custom">custom endpoint…</option>
-                </select>
-              </label>
-              <label>
-                Model
-                <input
-                  value={form.model}
-                  list={'models-' + form.provider}
-                  onChange={e => setForm({ ...form, model: e.target.value })}
-                  placeholder={MODEL_HINT[form.provider] || 'model id'}
-                />
-                <datalist id={'models-' + form.provider}>
-                  {(SUGGESTED[form.provider] || []).map(m => <option key={m} value={m} />)}
-                </datalist>
-                <span className="muted small">ids drift — verify on the provider's model list page</span>
-              </label>
-              <label>
-                Trials per task (1–10)
-                <input
-                  type="number" min="1" max="10"
-                  value={form.trials}
-                  onChange={e => setForm({ ...form, trials: e.target.value })}
-                />
-              </label>
-              {form.provider === 'custom' && (
-                <>
-                  <label>
-                    Base URL
-                    <input
-                      value={form.baseUrl}
-                      onChange={e => setForm({ ...form, baseUrl: e.target.value })}
-                      placeholder="https://…/v1"
-                    />
-                  </label>
-                  <label>
-                    API key (in memory only)
-                    <input
-                      type="password"
-                      value={form.apiKey}
-                      onChange={e => setForm({ ...form, apiKey: e.target.value })}
-                    />
-                  </label>
-                </>
-              )}
-              {form.provider !== 'ollama' && form.provider !== 'custom' && (
-                <label>
-                  API key (optional — stays in memory for this run only)
-                  <input
-                    type="password"
-                    value={form.apiKey}
-                    onChange={e => setForm({ ...form, apiKey: e.target.value })}
-                    placeholder={chosenProvider && chosenProvider.has_key
-                      ? 'using the key from .env — paste here to override'
-                      : 'paste your ' + form.provider + ' key here, or add it to .env'}
-                  />
-                </label>
-              )}
-              {keyMissing && !form.apiKey && (
-                <div className="muted small bad">
-                  No key yet for <b>{form.provider}</b>: paste it above for this run, or add{' '}
-                  <code>{form.provider.toUpperCase()}_API_KEY=…</code> to .env for reuse (get one at{' '}
-                  <a href={chosenProvider.key_url} target="_blank" rel="noreferrer">{chosenProvider.key_url}</a>)
-                </div>
-              )}
-              <div className="muted small">
-                provider label: <b>{form.provider === 'custom' ? providerFor(form.baseUrl) : form.provider}</b>
-              </div>
-              <button
-                className="runbtn"
-                disabled={starting || running || !form.model || (form.provider === 'custom' && !form.baseUrl)}
-                type="submit"
-              >
-                {running ? 'A run is in progress…' : `Run ${form.trials || 1} trial(s) × 10 tasks`}
-              </button>
-            </form>
-
-            <div className="muted small previewline">
-              This scenario: <b>10 tasks × {form.trials || 1} trials = {10 * (form.trials || 1)} model calls</b> → then grading: policy
-              checks → repair tasks execute in the Daytona sandbox ({sandboxOk === null ? 'checking…' : sandboxOk ? 'key ✓ — will run' : 'no key — repairs stay "not executed"'}) → evidence updates everywhere.
-            </div>
-
-            {runState && (
-              <div className="livestream">
-                <div className="muted small">
-                  {runState.running
-                    ? <>RUNNING {runState.config && runState.config.model} — started {runState.started_utc} · transcripts so far: {runState.transcripts}</>
-                    : runState.finished_utc
-                      ? <>last run finished {runState.finished_utc} · total transcripts: {runState.transcripts}{runState.error ? ' · error: ' + runState.error : ''}</>
-                      : 'no run yet'}
-                </div>
-                <div className="events">
-                  {lastEvents.map((ev, i) => (
-                    <div key={i} className="small">
-                      <span className="muted">{ev.utc}</span>{' '}
-                      {ev.kind === 'start' && <span>▶ {ev.task} · trial {ev.trial}</span>}
-                      {ev.kind === 'done' && <span className={ev.outcome === 'error' ? 'bad' : 'ok'}>■ {ev.task} · trial {ev.trial} · {ev.outcome}</span>}
-                      {ev.kind === 'skips' && <span className="muted">– {ev.count} already-saved trials skipped</span>}
-                      {ev.kind === 'skip' && <span className="muted">– skip {ev.task} · trial {ev.trial}</span>}
-                      {ev.kind === 'run-complete' && <span className="ok">run complete ({ev.transcripts_total} transcripts)</span>}
-                      {ev.kind === 'export-done' && <span className="ok">dashboard data re-exported</span>}
-                      {ev.kind === 'run-error' && <span className="bad">run error: {ev.error}</span>}
-                      {ev.kind === 'run-start' && <span>run start · {ev.model} · {ev.trials} trials</span>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
-        </main>
+        <RunPanel
+          form={form} setForm={setForm}
+          providers={providers} ollamaModels={ollamaModels}
+          sandboxOk={sandboxOk} running={running} starting={starting}
+          runState={runState} nextScenarioId={nextScenarioId}
+          startRun={startRun}
+        />
       )}
 
       {view === 'results' && scenario && (
@@ -810,33 +792,25 @@ export default function App() {
             <span>endpoint: <b>{scenario.verified ? 'verified' : 'unverified alias'}</b></span>
             {running
               ? <span className="livebadge">● LIVE — cells fill as answers land</span>
-              : <button
-                  className="runbtn small"
-                  onClick={quickRun}
-                  disabled={starting}
-                  title="Runs this scenario's model with one more trial than shown (10 fresh calls). 7B models are CPU-heavy on this machine."
-                >
+              : <button className="runbtn small" onClick={quickRun} disabled={starting}
+                  title="Runs this scenario's model with one more trial than shown (10 fresh calls)">
                   ▶ Run +1 trial live ({scenario.model})
                 </button>}
           </section>
 
           <section className="cards">
             {scenario.trials.map(t => (
-              <div className="card" key={t.trial}>
-                <div className="muted">Trial {t.trial} · {t.ran}/{data.tasks.length} run</div>
-                <div className="big">{t.pass}/{t.ran} pass</div>
-                <div className="muted small">
-                  {t.fail} failed · {t.unexec} not executed (tests not run) · {data.tasks.length - t.ran} not run
-                </div>
-              </div>
+              <StatCard key={t.trial}
+                label={`Trial ${t.trial} · ${t.ran}/${data.tasks.length} run`}
+                value={t.ran ? `${t.pass}/${t.ran} pass` : '—'}
+                sub={`${t.fail} failed · ${t.unexec} not executed · ${data.tasks.length - t.ran} not run`}
+              />
             ))}
             {delta && (
-              <div className="card delta">
+              <div className="card stat delta">
                 <div className="muted">vs Scenario {prev.id}</div>
-                <div className="big">{delta.improved} improved</div>
-                <div className="muted small">
-                  {delta.regressed} regressed · {delta.same} same · changed one thing: the subject model
-                </div>
+                <div className="big tabular">{delta.improved} improved</div>
+                <div className="muted small">{delta.regressed} regressed · {delta.same} same · changed one thing: the subject model</div>
               </div>
             )}
           </section>
@@ -849,168 +823,160 @@ export default function App() {
             </p>
           )}
 
-          <table className="grid">
-            <thead>
-              <tr>
-                <th className="num">#</th>
-                <th>Task</th>
-                <th>Tests</th>
-                <th>Expected</th>
-                <th className="center" colSpan={Math.max(maxTrials, 1)}>Trials</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.tasks.map((t, i) => (
-                <tr key={t.id}>
-                  <td className="num muted">{i + 1}</td>
-                  <td>
-                    <div className="title">{t.title}</div>
-                    <div className="muted small"><code>{t.id}</code> · {t.probes}</div>
-                  </td>
-                  <td><span className={'badge ' + t.type}>{TYPE_LABEL[t.type]}</span></td>
-                  <td className="small expected">{t.expected}</td>
-                  <td className="center" colSpan={Math.max(maxTrials, 1)}>
-                    <div className="cells" style={{ gridTemplateColumns: `repeat(${Math.max(maxTrials, 1)}, 52px)` }}>
-                      {Array.from({ length: Math.max(maxTrials, 1) }, (_, i2) => i2 + 1).map(n => {
-                        const { state, cell } = cellFor(t, n)
-                        if (state === 'live-start') {
-                          return <button key={n} className="cell live" title={`Trial ${n}: probing now…`}>◌</button>
-                        }
-                        const c = state === 'data' || state === 'live-done' ? cell : null
-                        const st = c ? (OUT[c.outcome] || { cls: 'cell fail', sym: '✗', label: c.outcome || 'ungraded' }) : null
-                        return (
-                          <button
-                            key={n}
-                            className={c ? st.cls + ' clickable' : 'cell notrun'}
-                            title={c ? `Trial ${n}: ${st.label} — click to inspect prompt, response, and grading` : `Trial ${n}: not run`}
-                            onClick={() => c && openInspector(t, n, scenario.model, { outcome: c.outcome, reason: c.reason, checks: c.checks, verdict: c.verdict })}
-                          >
-                            {c ? st.sym : '—'}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <TaskGrid data={data} scenario={scenario} maxTrials={maxTrials} cellFor={cellFor} onInspect={openInspector} />
 
           <section className="changes">
             <h2>Changes between scenarios</h2>
             {data.changes.map(c => (
-              <p key={c.from}>
-                <b>Scenario {c.from} → {c.to}:</b> {c.text}
-              </p>
+              <p key={c.from}><b>Scenario {c.from} → {c.to}:</b> {c.text}</p>
             ))}
           </section>
 
           <footer className="muted small">
-            Posture: model code is never executed (no verified sandbox ships here) — repair
-            trials that pass all policy checks are marked "not executed". REPORT/ESCALATE
-            rows are keyword-rubric results pending human audit. Every claim traces to a raw
-            transcript in transcripts/. Live runs go through tools/eval_server.py
-            (127.0.0.1 only); keys stay in memory.
+            Posture: model code is never executed on this machine without an isolated sandbox —
+            repair trials that pass all policy checks run in the Daytona cloud sandbox when a
+            key is configured, and stay "not executed" otherwise. REPORT/ESCALATE rows are
+            keyword-rubric results pending human audit. Every claim traces to a raw transcript.
           </footer>
         </main>
       )}
 
-      {inspector && (
-        <div className="overlay" onClick={() => setInspector(null)}>
-          <section className="detail modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
-            <button className="closebtn" onClick={() => setInspector(null)} aria-label="Close inspector">✕</button>
-            {inspector.loading && <span className="muted">Loading transcript…</span>}
-            {inspector.error && <span className="bad">Transcript error: {inspector.error}</span>}
-            {inspector.record && (() => {
-              const rec = inspector.record
-              const sections = parsePrompt(rec.prompt)
-              const files = parseFiles(sections.repository)
-              const graded = gradedOf(inspector.prefill, rec) || {}
-              return (
-                <>
-                  <h2>
-                    {inspector.task.title}{' '}
-                    <span className="muted">— trial {inspector.trial} · {inspector.model}</span>
-                  </h2>
-                  <div className="kv">
-                    <span className={'badge ' + (OUT[graded.outcome] ? graded.outcome : 'fail')}>
-                      {(OUT[graded.outcome] || { label: graded.outcome || 'ungraded' }).label}
-                    </span>
-                    <span>model verdict: <b>{graded.verdict}</b></span>
-                    <span>expected: <b>{inspector.task.type.toUpperCase()}</b></span>
-                    {rec.latency_s != null && <span>{rec.latency_s}s</span>}
-                    {rec.usage && rec.usage.total_tokens ? <span>{rec.usage.total_tokens} tokens</span> : null}
-                  </div>
-
-                  <h3>1 · What was sent to the model</h3>
-                  <div className="muted small">
-                    POST <code>{rec.base_url}/chat/completions</code> · model <code>{rec.model}</code> ·
-                    temperature <code>{String(rec.temperature)}</code> ·{' '}
-                    {rec.prompt.length} chars · sha256 <code>{String(rec.prompt_sha256).slice(0, 16)}…</code> ·{' '}
-                    sent {rec.date_utc}
-                  </div>
-                  <pre className="block">{sections.request}</pre>
-                  <details className="raw">
-                    <summary>Inlined repository files ({files.length}) — click to expand each</summary>
-                    {files.map(f => (
-                      <details key={f.path} className="fileblock">
-                        <summary><code>{f.path}</code></summary>
-                        <pre>{f.content}</pre>
-                      </details>
-                    ))}
-                  </details>
-                  <details className="raw">
-                    <summary>Response contract the model must follow</summary>
-                    <pre>{sections.contract}</pre>
-                  </details>
-                  <details className="raw">
-                    <summary>Show the full raw prompt ({rec.prompt.length} chars)</summary>
-                    <pre>{rec.prompt}</pre>
-                  </details>
-
-                  <h3>2 · What the model answered</h3>
-                  {rec.error && <p className="bad">Endpoint error: {rec.error}</p>}
-                  <pre>{rec.response || '(empty response)'}</pre>
-
-                  <h3>3 · How the grader judged it</h3>
-                  <p><b>Grader:</b> {graded.reason || '—'}</p>
-                  <p>
-                    <b>Checks:</b>{' '}
-                    {Object.keys(graded.checks || {}).length === 0
-                      ? 'full check list appears after the export for live runs — raw response above in the meantime'
-                      : Object.entries(graded.checks).map(([k, v]) => (
-                          <span key={k} className={'check ' + (v ? 'ok' : 'bad')}>
-                            {k}: {v ? 'ok' : 'FAILED'}
-                          </span>
-                        ))}
-                  </p>
-                  {graded.outcome === 'unexecuted' && (
-                    <p className="muted small">
-                      Read gray as three steps: (1) the model did produce a repair — see it in
-                      its answer above; (2) every policy check passed (protected files
-                      untouched, diff within budget, imports clean); (3) tests were never run
-                      because no verified sandbox exists — so it stays gray: promising, but
-                      unproven.
-                    </p>
-                  )}
-                  {graded.outcome === 'fail' && inspector.task.type !== 'repair' && (
-                    <p className="muted small">
-                      Calibration failure: the model answered "{graded.verdict}" but the task
-                      needed {inspector.task.type.toUpperCase()} — it should have stopped and
-                      reported the mismatch instead of producing an answer. That gap is exactly
-                      what this eval measures.
-                    </p>
-                  )}
-                  <p className="muted small">
-                    What a correct answer looks like: {inspector.task.expected}. Full raw
-                    payloads: <code>transcripts/{inspector.task.id}__{slugify(inspector.model)}__trial{String(inspector.trial).padStart(2, '0')}.json</code>
-                  </p>
-                </>
-              )
-            })()}
-          </section>
-        </div>
-      )}
+      <InspectorModal inspector={inspector} onClose={() => setInspector(null)} />
     </div>
+  )
+}
+
+function RunPanel({ form, setForm, providers, ollamaModels, sandboxOk, running, starting, runState, nextScenarioId, startRun }) {
+  const suggestions = PROVIDER_SUGGESTIONS[form.provider] || ollamaModels
+  const chosen = providers.find(p => p.name === form.provider)
+  const keyMissing = chosen && chosen.key_url && !chosen.has_key
+  const lastEvents = runState ? (runState.events || []).slice(-10) : []
+  return (
+    <main>
+      <section className="detail">
+        <h2>Run Scenario {nextScenarioId} live</h2>
+        <p className="muted small">
+          Same 10 tasks, same trusted grader, fresh transcripts (never overwritten). One
+          changed thing = this scenario's subject model/endpoint. Keys pasted here stay in
+          memory for this run only; keys saved in ⚙ Settings are reused every time.
+        </p>
+        <form className="runform" onSubmit={startRun}>
+          <label>
+            Provider (key resolved from ⚙ Settings / .env — never sent to the browser)
+            <select
+              value={form.provider}
+              onChange={e => setForm({ ...form, provider: e.target.value, model: '' })}
+            >
+              {providers.map(p => (
+                <option key={p.name} value={p.name}>
+                  {p.name} {p.has_key || !p.key_url ? '· key ✓' : '· key missing'}
+                </option>
+              ))}
+              <option value="custom">custom endpoint…</option>
+            </select>
+          </label>
+          <label>
+            Model
+            <input
+              value={form.model}
+              list={'models-' + form.provider}
+              onChange={e => setForm({ ...form, model: e.target.value })}
+              placeholder={MODEL_HINT(form.provider, ollamaModels)}
+            />
+            <datalist id={'models-' + form.provider}>
+              {suggestions.map(m => <option key={m} value={m} />)}
+            </datalist>
+            <span className="muted small">ids drift — verify on the provider's model list page</span>
+          </label>
+          <label>
+            Trials per task (1–10)
+            <input
+              type="number" min="1" max="10"
+              value={form.trials}
+              onChange={e => setForm({ ...form, trials: e.target.value })}
+            />
+          </label>
+          {form.provider !== 'ollama' && form.provider !== 'custom' && (
+            <label>
+              API key (optional — in memory for this run only)
+              <input
+                type="password"
+                value={form.apiKey}
+                onChange={e => setForm({ ...form, apiKey: e.target.value })}
+                placeholder={chosen && chosen.has_key
+                  ? 'using the key from ⚙ Settings — paste here to override'
+                  : 'paste your ' + form.provider + ' key, or save it in ⚙ Settings'}
+              />
+            </label>
+          )}
+          {form.provider === 'custom' && (
+            <>
+              <label>
+                Base URL
+                <input
+                  value={form.baseUrl}
+                  onChange={e => setForm({ ...form, baseUrl: e.target.value })}
+                  placeholder="https://…/v1"
+                />
+              </label>
+              <label>
+                API key (in memory only)
+                <input
+                  type="password"
+                  value={form.apiKey}
+                  onChange={e => setForm({ ...form, apiKey: e.target.value })}
+                />
+              </label>
+            </>
+          )}
+          {keyMissing && !form.apiKey && (
+            <div className="muted small bad">
+              No key for <b>{form.provider}</b> yet: paste it above for this run, or save it in ⚙ Settings (get one at{' '}
+              <a href={chosen.key_url} target="_blank" rel="noreferrer">{chosen.key_url}</a>)
+            </div>
+          )}
+          <div className="muted small previewline">
+            This scenario: <b>10 tasks × {form.trials || 1} trials = {10 * (form.trials || 1)} model calls</b> → then
+            grading: policy checks → repair tasks execute in the Daytona sandbox
+            ({sandboxOk === null ? 'checking…' : sandboxOk ? 'key ✓ — will run' : 'no key — repairs stay "not executed"'}) →
+            evidence updates everywhere.
+          </div>
+          <button
+            className="runbtn"
+            disabled={starting || running || !form.model || (form.provider === 'custom' && !form.baseUrl)}
+            type="submit"
+          >
+            {running ? 'A run is in progress…' : `Run ${form.trials || 1} trial(s) × 10 tasks`}
+          </button>
+        </form>
+
+        {runState && (
+          <div className="livestream">
+            <div className="muted small">
+              {runState.running
+                ? <>RUNNING {runState.config && runState.config.model} — started {runState.started_utc} · transcripts so far: {runState.transcripts}</>
+                : runState.finished_utc
+                  ? <>last run finished {runState.finished_utc} · total transcripts: {runState.transcripts}{runState.error ? ' · error: ' + runState.error : ''}</>
+                  : 'no run yet'}
+            </div>
+            <div className="events">
+              {lastEvents.map((ev, i) => (
+                <div key={i} className="small">
+                  <span className="muted">{ev.utc}</span>{' '}
+                  {ev.kind === 'start' && <span>▶ {ev.task} · trial {ev.trial}</span>}
+                  {ev.kind === 'done' && <span className={ev.outcome === 'error' ? 'bad' : 'ok'}>■ {ev.task} · trial {ev.trial} · {ev.outcome}</span>}
+                  {ev.kind === 'skips' && <span className="muted">– {ev.count} already-saved trials skipped</span>}
+                  {ev.kind === 'skip' && <span className="muted">– skip {ev.task} · trial {ev.trial}</span>}
+                  {ev.kind === 'run-complete' && <span className="ok">run complete ({ev.transcripts_total} transcripts)</span>}
+                  {ev.kind === 'export-done' && <span className="ok">dashboard data re-exported</span>}
+                  {ev.kind === 'run-error' && <span className="bad">run error: {ev.error}</span>}
+                  {ev.kind === 'run-start' && <span>run start · {ev.model} · {ev.trials} trials</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+    </main>
   )
 }

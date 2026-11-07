@@ -45,7 +45,7 @@ PROVIDERS = {
     "openrouter": {"base_url": "https://openrouter.ai/api/v1",
                    "env": "OPENROUTER_API_KEY", "key_url": "https://openrouter.ai/keys"},
     "ollama": {"base_url": "http://localhost:11434/v1",
-               "env": None, "key_url": None},
+               "env": None, "key_url": None, "label": "ollama-local"},
 }
 
 
@@ -314,7 +314,7 @@ class Handler(BaseHTTPRequestHandler):
         if provider in PROVIDERS:
             p = PROVIDERS[provider]
             base_url = p["base_url"]
-            provider_label = provider
+            provider_label = p.get("label", provider)
             # key resolution: pasted in the UI (in memory, this run only) > .env > error
             if not api_key and p["env"]:
                 api_key = sandbox_daytona.load_env_keys().get(p["env"], "")
