@@ -102,9 +102,9 @@ provenance.
 
 Evidence below is filled only by `harness/offline_grade.py` from real saved transcripts, with trial
 counts stated. Final evidence wants **3–5 trials per task per model**; cells with
-fewer are exploratory probing only. Generated source of truth: ,
-rebuilt from raw transcripts by ; the scenario dashboard
-() shows the same cells per trial round.
+fewer are exploratory probing only. Generated source of truth: `results/evidence_table.md`,
+rebuilt from raw transcripts by `harness/offline_grade.py`; the scenario dashboard
+(`docs/dashboard.html`) shows the same cells per trial round.
 
 | model | task | trials | passes | notes |
 |---|---|---:|---:|---|
