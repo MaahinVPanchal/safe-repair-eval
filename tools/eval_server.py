@@ -62,6 +62,22 @@ def export_data():
                        cwd=ROOT, capture_output=True)
 
 
+def grade_saved(path):
+    """Grade one saved transcript immediately (offline posture, no execution)
+    so the UI can color the cell the moment a response lands."""
+    from graders import grader
+    with open(path, encoding="utf-8") as fh:
+        tr = json.load(fh)
+    task = next((t for t in TASKS if t["id"] == tr.get("task_id")), None)
+    if task is None:
+        return None
+    res = grader.grade(task, tr.get("response", ""), executor=None)
+    return {"outcome": ("pass" if res["pass"]
+                        else "unexecuted" if "unexecuted" in res["reason"].lower()
+                        else "fail"),
+            "reason": res["reason"][:140]}
+
+
 def run_scenario(cfg):
     try:
         with LOCK:
@@ -73,6 +89,19 @@ def run_scenario(cfg):
                 "error": "",
             })
         event("run-start", model=cfg["model"], trials=cfg["trials"])
+
+        def progress(ev):
+            if ev.get("kind") == "done" and ev.get("task"):
+                try:
+                    path = os.path.join(
+                        TRANSCRIPTS_DIR, "%s__%s__trial%02d.json"
+                        % (ev["task"], sra_runner._slug(cfg["model"]), ev["trial"]))
+                    graded = grade_saved(path)
+                    if graded:
+                        ev.update(graded)
+                except Exception as exc:
+                    ev["grading_error"] = str(exc)
+            event(**ev)
 
         saved = sra_runner.probe(
             TASKS, cfg["base_url"], cfg["api_key"], cfg["model"],

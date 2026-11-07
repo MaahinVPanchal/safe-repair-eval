@@ -77,6 +77,11 @@ table.grid tr:last-child td { border-bottom: none; }
 .cell.fail { background: #fdd8dc; color: #c22730; }
 .cell.unexec { background: #eceef1; color: #5f6470; }
 .cell.notrun { background: transparent; color: #9aa0ab; border: 1px dashed #c9ccd4; }
+.cell.live { background: #fff8e1; color: #8a5a00; border: 1px solid #f0d9a8; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+.livebadge { color: #c22730; font-weight: 500; animation: pulse 1.6s ease-in-out infinite; }
+.runbtn.small { font-size: 12px; padding: 6px 12px; font-weight: 400; }
 .cell.clickable { cursor: pointer; }
 .cell.clickable:hover { filter: brightness(0.96); }
 

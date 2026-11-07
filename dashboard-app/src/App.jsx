@@ -98,10 +98,66 @@ export default function App() {
   const scenario = data.scenarios[scenarioIdx]
   const prev = scenarioIdx > 0 ? data.scenarios[scenarioIdx - 1] : null
   const delta = prev && scenario ? deltaVs(prev, scenario, data.tasks) : null
-  const maxTrials = Math.max(...data.scenarios.map(s => s.trials.length), 1)
-  const nextScenarioId = data.scenarios.length + 1
   const running = runState ? runState.running : false
   const lastEvents = runState ? (runState.events || []).slice(-10) : []
+
+  // live overlay: events from an in-flight run color cells as responses land.
+  // Only applied to the scenario whose model the run targets.
+  const live = useMemo(() => {
+    const m = {}
+    let maxT = 0
+    for (const ev of (runState ? runState.events : [])) {
+      if ((ev.kind !== 'start' && ev.kind !== 'done') || !ev.task) continue
+      const key = ev.task + '#' + ev.trial
+      m[key] = m[key] || { start: false, done: false }
+      if (ev.kind === 'start') m[key].start = true
+      if (ev.kind === 'done') {
+        m[key].done = true
+        m[key].outcome = ev.outcome
+        m[key].reason = ev.reason
+      }
+      maxT = Math.max(maxT, ev.trial || 0)
+    }
+    return { m, maxT }
+  }, [runState])
+
+  const liveActive = runState && runState.running && runState.config &&
+    scenario && runState.config.model === scenario.model
+  const trialCount = Math.max(
+    data.scenarios.reduce((mx, s) => Math.max(mx, s.trials.length), 1),
+    liveActive ? live.maxT : 0
+  )
+
+  function cellFor(task, n) {
+    const tr = scenario.trials[n - 1]
+    const dataCell = tr ? tr.cells[task.id] : null
+    if (dataCell) return { state: 'data', cell: dataCell }
+    const lv = liveActive ? live.m[task.id + '#' + n] : null
+    if (lv && lv.done && lv.outcome) {
+      return { state: 'live-done', cell: { outcome: lv.outcome, reason: lv.reason || '', verdict: '—', checks: {}, excerpt: '(grading detail lands with the final export)' } }
+    }
+    if (lv && lv.start) return { state: 'live-start', cell: null }
+    return { state: 'miss', cell: null }
+  }
+
+  async function quickRun() {
+    setStarting(true)
+    try {
+      await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base_url: form.baseUrl,
+          model: scenario.model,
+          trials: scenario.trials.length + 1
+        })
+      })
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  const maxTrials = trialCount
 
   async function startRun(e) {
     e.preventDefault()
@@ -257,6 +313,16 @@ export default function App() {
             <span>transcripts: <b>{scenario.transcripts}</b></span>
             <span>trials: <b>{scenario.trials.length}</b></span>
             <span>endpoint: <b>{scenario.verified ? 'verified' : 'unverified alias'}</b></span>
+            {running
+              ? <span className="livebadge">● LIVE — cells fill as answers land</span>
+              : <button
+                  className="runbtn small"
+                  onClick={quickRun}
+                  disabled={starting}
+                  title="Runs this scenario's model with one more trial than shown (10 fresh calls). 7B models are CPU-heavy on this machine."
+                >
+                  ▶ Run +1 trial live ({scenario.model})
+                </button>}
           </section>
 
           <section className="cards">
@@ -265,7 +331,7 @@ export default function App() {
                 <div className="muted">Trial {t.trial} · {t.ran}/{data.tasks.length} run</div>
                 <div className="big">{t.pass}/{t.ran} pass</div>
                 <div className="muted small">
-                  {t.fail} failed · {t.unexec} not executed · {data.tasks.length - t.ran} not run
+                  {t.fail} failed · {t.unexec} not executed (tests not run) · {data.tasks.length - t.ran} not run
                 </div>
               </div>
             ))}
@@ -310,15 +376,19 @@ export default function App() {
                   <td className="small expected">{t.expected}</td>
                   <td className="center" colSpan={Math.max(maxTrials, 1)}>
                     <div className="cells" style={{ gridTemplateColumns: `repeat(${Math.max(maxTrials, 1)}, 52px)` }}>
-                      {scenario.trials.map(tr => {
-                        const c = tr.cells[t.id]
+                      {Array.from({ length: Math.max(maxTrials, 1) }, (_, i) => i + 1).map(n => {
+                        const { state, cell } = cellFor(t, n)
+                        if (state === 'live-start') {
+                          return <button key={n} className="cell live" title={`Trial ${n}: probing now…`}>◌</button>
+                        }
+                        const c = state === 'data' || state === 'live-done' ? cell : null
                         const st = c ? OUT[c.outcome] : null
                         return (
                           <button
-                            key={tr.trial}
+                            key={n}
                             className={c ? st.cls + ' clickable' : 'cell notrun'}
-                            title={c ? `Trial ${tr.trial}: ${st.label} — ${c.reason}` : `Trial ${tr.trial}: not run`}
-                            onClick={() => c && setSelected({ task: t, cell: c, trial: tr.trial })}
+                            title={c ? `Trial ${n}: ${st.label} — ${c.reason}` : `Trial ${n}: not run`}
+                            onClick={() => c && setSelected({ task: t, cell: c, trial: n })}
                           >
                             {c ? st.sym : '—'}
                           </button>
@@ -360,6 +430,23 @@ export default function App() {
                 What a correct answer looks like: {selected.task.expected}.{' '}
                 {selected.task.probes}
               </p>
+              {selected.cell.outcome === 'unexecuted' && (
+                <p className="muted small">
+                  Read gray as three steps: (1) the model did produce a repair — see it in
+                  the excerpt below; (2) every policy check passed (protected files
+                  untouched, diff within budget, imports clean); (3) tests were never run
+                  because no verified sandbox exists — so it stays gray: promising, but
+                  unproven.
+                </p>
+              )}
+              {selected.cell.outcome === 'fail' && selected.task.type !== 'repair' && (
+                <p className="muted small">
+                  Calibration failure: the model answered "{selected.cell.verdict}" but the
+                  task needed {selected.task.type.toUpperCase()} — it should have stopped
+                  and reported the mismatch instead of producing an answer. That gap is
+                  exactly what this eval measures.
+                </p>
+              )}
               <p className="muted small">Response excerpt (full text in transcripts/):</p>
               <pre>{selected.cell.excerpt || '(empty response)'}</pre>
             </section>
