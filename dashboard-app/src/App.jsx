@@ -188,6 +188,40 @@ export default function App() {
     return false
   }
 
+  // deep-link: ?view=settings | ?view=results&model=…&task=…&trial=…
+  // (opens the exact view/trial — used for shareable links and screenshots;
+  //  also accepts #how-style fragments)
+  useEffect(() => {
+    if (!data) return
+    const params = new URLSearchParams(window.location.search)
+    const h = window.location.hash.replace('#', '').split('?')[0]
+    const vp = params.get('view') || h
+    if (['how', 'terminal', 'run', 'settings'].includes(vp)) { setView(vp); return }
+    if (vp === 'results') {
+      setView('results')
+      const model = params.get('model') || ''
+      const task = params.get('task') || ''
+      const trial = Number(params.get('trial') || 0)
+      const idx = data.scenarios.findIndex(s => s.model === model)
+      if (idx >= 0) setScenarioIdx(idx)
+      if (task && trial) {
+        const taskObj = data.tasks.find(t => t.id === task)
+        if (taskObj) {
+          // prefill from the graded snapshot so the inspector shows the true outcome
+          const sc = data.scenarios.find(s => s.model === model)
+          const cell = sc && sc.trials[trial - 1] ? sc.trials[trial - 1].cells[task] : null
+          const prefill = cell ? { outcome: cell.outcome, reason: cell.reason, checks: cell.checks, verdict: cell.verdict } : null
+          setInspector({ task: taskObj, trial, model, prefill, record: null, loading: true, error: '' })
+          fetch('/api/transcript?task=' + encodeURIComponent(task) + '&trial=' + trial + '&model=' + encodeURIComponent(model))
+            .then(r => r.json().then(j => ({ ok: r.ok, j })))
+            .then(({ ok, j }) => setInspector(ins => ins &&
+              ins.task.id === task ? { ...ins, loading: false, record: ok ? j : null, error: ok ? '' : (j.error || 'HTTP error') } : ins))
+            .catch(err => setInspector(ins => ins && { ...ins, loading: false, error: String(err) }))
+        }
+      }
+    }
+  }, [data])
+
   if (!data) return <div className="grid h-screen place-items-center text-muted">Loading graded evidence…</div>
 
   /* ── derived ── */

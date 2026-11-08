@@ -1,0 +1,41 @@
+2026-11-08 14:09:56.692: [INFO] CurrentProfilePath: D:\Ideation\micro1\.edge-shots\3\Default
+2026-11-08 14:09:56.692: [INFO] Profiles total count: 1
+2026-11-08 14:09:56.692: [INFO] Profile: name=Profile 1 path=D:\Ideation\micro1\.edge-shots\3\Default lastActive=2026-11-08T14:09:56.684Z
+2026-11-08 14:09:56.692: [INFO] LastUsedProfileDir: D:\Ideation\micro1\.edge-shots\3\Default
+2026-11-08 14:09:56.692: [INFO] MostRecentlyActiveProfile: name=Profile 1 path=D:\Ideation\micro1\.edge-shots\3\Default lastActive=2026-11-08T14:09:56.684Z
+2026-11-08 14:09:56.692: [INFO] OnDoneLoading sync enabled: 0
+2026-11-08 14:09:56.692: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-11-08 14:09:56.692: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-11-08 14:09:56.692: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-08 14:09:56.693: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-11-08 14:09:56.836: [INFO] VisibilityChanged: 0
+2026-11-08 14:09:57.468: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-11-08 14:09:57.470: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-11-08 14:09:57.471: [INFO] Primary account changed.
+2026-11-08 14:09:57.471: [INFO] OnPrimaryAccountChanged PrimaryAccountChangeEvent::Type::kSet
+2026-11-08 14:09:57.478: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-11-08 14:09:57.487: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-11-08 14:10:01.937: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-08 14:11:24.539: [INFO] CurrentProfilePath: D:\Ideation\micro1\.edge-shots\3\Default
+2026-11-08 14:11:24.539: [INFO] Profiles total count: 1
+2026-11-08 14:11:24.539: [INFO] Profile: name=Personal path=D:\Ideation\micro1\.edge-shots\3\Default lastActive=2026-11-08T14:11:24.529Z
+2026-11-08 14:11:24.539: [INFO] LastUsedProfileDir: D:\Ideation\micro1\.edge-shots\3\Default
+2026-11-08 14:11:24.539: [INFO] MostRecentlyActiveProfile: name=Personal path=D:\Ideation\micro1\.edge-shots\3\Default lastActive=2026-11-08T14:11:24.529Z
+2026-11-08 14:11:24.539: [INFO] OnDoneLoading sync enabled: 1
+2026-11-08 14:11:24.539: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-11-08 14:11:24.539: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-11-08 14:11:24.539: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-08 14:11:24.610: [INFO] VisibilityChanged: 0
+2026-11-08 14:11:25.223: [INFO] BookmarkNodeAdded, ABU: 0
+2026-11-08 14:11:25.224: [INFO] BookmarkNodeAdded, ABU: 0
+2026-11-08 14:11:25.224: [INFO] BookmarkNodeAdded, ABU: 0
+2026-11-08 14:11:25.224: [INFO] BookmarkNodeAdded, ABU: 0
+2026-11-08 14:11:25.224: [INFO] BookmarkNodeAdded, ABU: 0
+2026-11-08 14:11:25.224: [INFO] BookmarkNodeAdded, ABU: 0
+2026-11-08 14:11:25.224: [INFO] BookmarkNodeAdded, ABU: 0
+2026-11-08 14:11:25.224: [INFO] BookmarkNodeAdded, ABU: 0
+2026-11-08 14:11:25.224: [INFO] BookmarkNodeAdded, ABU: 0
+2026-11-08 14:11:25.230: [INFO] BookmarkBarPrefChanged showBar=0 showBarNTP=0
+2026-11-08 14:11:25.247: [INFO] VisibilityChanged: 1
+2026-11-08 14:11:25.773: [INFO] Sync initialization duration: 1232ms
+2026-11-08 14:11:29.703: [INFO] BookmarksSnapshot Shutdown total=9 bar=9 other=0 mobile=0 showBar=1 showBarNTP=0

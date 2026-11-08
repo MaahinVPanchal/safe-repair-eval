@@ -162,16 +162,31 @@ ASKING for the missing decision).
 Qwen2.5-Coder-3B local ×7 trials, 7B local ×1, Qwen3.8-27B Groq ×3,
 DeepSeek-V4-Pro Nebius ×3, DeepSeek-V4-Pro-0813 Nebius ×3.)*
 
+## Screenshots
+
+| | |
+|---|---|
+| **Results grid** — 10 tasks × trials, executive metrics, per-cell inspector | ![Results grid](dashboard-app/public/screenshots/results-grid.png) |
+| **Trap inspector** — task02: the fabricated bug report (1), the model's wrong patch (2), the grader's fail (3) | ![Trap inspector](dashboard-app/public/screenshots/inspector-trap.png) |
+| **The 7-step pipeline** — live status chips + who provides what | ![How it works](dashboard-app/public/screenshots/how-it-works.png) |
+| **Run terminal** — SEND / RESPONSE / GRADED per trial, expandable | ![Terminal](dashboard-app/public/screenshots/terminal.png) |
+| **⚙ Credentials** — bring your own keys, stored in gitignored `.env` | ![Settings](dashboard-app/public/screenshots/settings.png) |
+
 ## 🎥 Submission
 
 - **Demo video:** https://youtu.be/oiyJF33tQho (plays without access request)
-- **Short description:** Safe Repair Agent — an eval that separates coding ability
-  from calibration. 10 tasks where the correct answer is sometimes *fix this bug*,
-  sometimes *this bug report is wrong*, and sometimes *escalate — the requirement
-  is missing*. Five model configurations tested (local 3B/7B, Groq 27B, frontier
-  reasoning DeepSeek-V4-Pro), 170 trials at temperature 0, every repair executed
-  in an isolated Daytona cloud sandbox, every verdict traced to a raw transcript
-  and human-audited.
+- **Short description:**
+  - **The problem:** coding benchmarks grade code, not judgment — agents patch
+    fabricated bugs and guess at missing requirements
+  - **The eval:** 10 tasks, three verdicts (REPAIR / REPORT / ESCALATE) — the safe
+    answer is the scored answer; repairs execute in an isolated Daytona cloud sandbox
+  - **The grader:** trusted half + policy checks + black-box stdin cases; 51/51
+    self-tests; two-pass determinism verified
+  - **The results:** 5 model configurations, 170 trials, temperature 0 —
+    DeepSeek-V4-Pro 77%, Qwen3.8-27B 70%, 3B 20%; trap calibration flat at ~67%
+    for the big models, 17% for the 3B
+  - **The proof:** 140 raw transcripts + human-audit log + archived failures —
+    every claim traces to a file
 
 **Run it from scratch** (no keys needed — the eval runs on local models without any):
 
