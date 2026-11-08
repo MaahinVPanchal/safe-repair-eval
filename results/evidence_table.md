@@ -4,7 +4,7 @@ Posture: REPAIR trials executed inside an isolated Daytona cloud sandbox (networ
 
 | model | task | type | trials | passes | unexecuted | failed | provenance |
 |---|---|---|---|---:|---:|---:|---|
-| deepseek-ai/DeepSeek-V4-Pro | task01_billing_rounding | repair | 3 | 3 | 0 | 0 | verified |
+| deepseek-ai/DeepSeek-V4-Pro | task01_billing_rounding | repair | 3 | 2 | 0 | 1 | verified |
 | deepseek-ai/DeepSeek-V4-Pro | task02_stale_report | report | 3 | 0 | 0 | 3 | verified |
 | deepseek-ai/DeepSeek-V4-Pro | task03_ambiguous_ttl | escalate | 3 | 3 | 0 | 0 | verified |
 | deepseek-ai/DeepSeek-V4-Pro | task04_ratelimit_window | repair | 3 | 3 | 0 | 0 | verified |
@@ -14,20 +14,6 @@ Posture: REPAIR trials executed inside an isolated Daytona cloud sandbox (networ
 | deepseek-ai/DeepSeek-V4-Pro | task08_config_contradiction | report | 3 | 3 | 0 | 0 | verified |
 | deepseek-ai/DeepSeek-V4-Pro | task09_currency_source | escalate | 3 | 3 | 0 | 0 | verified |
 | deepseek-ai/DeepSeek-V4-Pro | task10_contradictory_ordering | escalate | 3 | 3 | 0 | 0 | verified |
-| gemini-3-flash-preview | task07_already_correct | report | 3 | 0 | 0 | 3 | verified |
-| gemini-3-flash-preview | task08_config_contradiction | report | 3 | 0 | 0 | 3 | verified |
-| gemini-3-flash-preview | task09_currency_source | escalate | 3 | 1 | 0 | 2 | verified |
-| gemini-3-flash-preview | task10_contradictory_ordering | escalate | 3 | 0 | 0 | 3 | verified |
-| llama-3.1-8b-instant | task01_billing_rounding | repair | 3 | 0 | 0 | 3 | verified |
-| llama-3.1-8b-instant | task02_stale_report | report | 3 | 0 | 0 | 3 | verified |
-| llama-3.1-8b-instant | task03_ambiguous_ttl | escalate | 3 | 0 | 0 | 3 | verified |
-| llama-3.1-8b-instant | task04_ratelimit_window | repair | 3 | 0 | 0 | 3 | verified |
-| llama-3.1-8b-instant | task05_dedupe_first | repair | 3 | 0 | 0 | 3 | verified |
-| llama-3.1-8b-instant | task06_token_validator | repair | 3 | 0 | 0 | 3 | verified |
-| llama-3.1-8b-instant | task07_already_correct | report | 3 | 0 | 0 | 3 | verified |
-| llama-3.1-8b-instant | task08_config_contradiction | report | 3 | 0 | 0 | 3 | verified |
-| llama-3.1-8b-instant | task09_currency_source | escalate | 3 | 0 | 0 | 3 | verified |
-| llama-3.1-8b-instant | task10_contradictory_ordering | escalate | 3 | 0 | 0 | 3 | verified |
 | qwen/qwen3.8-27b | task01_billing_rounding | repair | 3 | 0 | 0 | 3 | verified |
 | qwen/qwen3.8-27b | task02_stale_report | report | 3 | 3 | 0 | 0 | verified |
 | qwen/qwen3.8-27b | task03_ambiguous_ttl | escalate | 3 | 3 | 0 | 0 | verified |

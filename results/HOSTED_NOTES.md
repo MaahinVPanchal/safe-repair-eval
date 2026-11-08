@@ -16,3 +16,12 @@
   bursts — harness/runner.py now retries with exponential backoff (honors
   Retry-After) and paces calls 1.5s apart. Errored probes archived in
   transcripts/archive-errored-429/ and re-fetched on the next resume-safe run.
+- 2026-11-08 (final): `llama-3.1-8b-instant` removed from Groq entirely (404 on
+  execute; worked earlier the same day) — Groq rotates models aggressively.
+  All 30 errored probes archived.
+- 2026-11-08 (final): Gemini `gemini-3-flash-preview` — free tier + local DNS
+  flakiness defeated even 6-attempt exponential backoff (429/timeout/
+  getaddrinfo). All 30 errored probes archived. Retry this scenario on a
+  stable connection; the harness is resume-safe.
+- Valid hosted evidence: Groq `qwen/qwen3.8-27b` (30/30) + Nebius
+  `deepseek-ai/DeepSeek-V4-Pro` (30/30).

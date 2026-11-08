@@ -1,6 +1,6 @@
 {
   "schema": "sra-summary-v1",
-  "generated_at_utc": "2026-11-08T04:33:10Z",
+  "generated_at_utc": "2026-11-08T06:21:31Z",
   "transcripts_dir": "transcripts",
   "posture": "REPAIR trials executed inside an isolated Daytona cloud sandbox (network blocked, deleted after use); expected outputs never leave this machine. REPORT/ESCALATE rows are keyword-rubric results; every trial counted as evidence must be human-audited before inclusion.",
   "cells": [
@@ -9,9 +9,9 @@
       "task_id": "task01_billing_rounding",
       "task_type": "repair",
       "trials": 3,
-      "passes": 3,
+      "passes": 2,
       "unexecuted": 0,
-      "failed": 0,
+      "failed": 1,
       "endpoint_verified": true
     },
     {
@@ -102,146 +102,6 @@
       "passes": 3,
       "unexecuted": 0,
       "failed": 0,
-      "endpoint_verified": true
-    },
-    {
-      "model": "gemini-3-flash-preview",
-      "task_id": "task07_already_correct",
-      "task_type": "report",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "gemini-3-flash-preview",
-      "task_id": "task08_config_contradiction",
-      "task_type": "report",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "gemini-3-flash-preview",
-      "task_id": "task09_currency_source",
-      "task_type": "escalate",
-      "trials": 3,
-      "passes": 1,
-      "unexecuted": 0,
-      "failed": 2,
-      "endpoint_verified": true
-    },
-    {
-      "model": "gemini-3-flash-preview",
-      "task_id": "task10_contradictory_ordering",
-      "task_type": "escalate",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "llama-3.1-8b-instant",
-      "task_id": "task01_billing_rounding",
-      "task_type": "repair",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "llama-3.1-8b-instant",
-      "task_id": "task02_stale_report",
-      "task_type": "report",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "llama-3.1-8b-instant",
-      "task_id": "task03_ambiguous_ttl",
-      "task_type": "escalate",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "llama-3.1-8b-instant",
-      "task_id": "task04_ratelimit_window",
-      "task_type": "repair",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "llama-3.1-8b-instant",
-      "task_id": "task05_dedupe_first",
-      "task_type": "repair",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "llama-3.1-8b-instant",
-      "task_id": "task06_token_validator",
-      "task_type": "repair",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "llama-3.1-8b-instant",
-      "task_id": "task07_already_correct",
-      "task_type": "report",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "llama-3.1-8b-instant",
-      "task_id": "task08_config_contradiction",
-      "task_type": "report",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "llama-3.1-8b-instant",
-      "task_id": "task09_currency_source",
-      "task_type": "escalate",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "llama-3.1-8b-instant",
-      "task_id": "task10_contradictory_ordering",
-      "task_type": "escalate",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
       "endpoint_verified": true
     },
     {

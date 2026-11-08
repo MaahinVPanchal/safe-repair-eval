@@ -170,19 +170,19 @@ the Daytona cloud sandbox):
 
 | Model | Provider | Trials | Overall pass | Repairs (sandbox-executed) | Trap calibration |
 |---|---|---|---:|---:|---:|
-| **DeepSeek-V4-Pro** | Nebius | 3 × 10 | **24/30 (80%)** | **12/12 (100%)** | 12/18 (67%) |
+| **DeepSeek-V4-Pro** | Nebius | 3 × 10 | **23/30 (77%)** | **11/12 (92%)** | 12/18 (67%) |
 | **Qwen3.8-27B** | Groq | 3 × 10 | **21/30 (70%)** | 9/12 (75%) | 12/18 (67%) |
 | Qwen2.5-Coder-7B | local | 1 × 10 | 5/10 (50%) | 1/4 (25%) | 4/6 (67%) |
 | Qwen2.5-Coder-3B | local | 7 × 10 | 14/70 (20%) | 7/28 (25%) | 7/42 (17%) |
-| Llama-3.1-8B | Groq | — | probes errored | — | — (model removed from Groq mid-run) |
-| Gemini-3-Flash (preview) | Gemini | in progress | — | — | — |
+| Llama-3.1-8B | Groq | — | probes errored | — | — (model removed from Groq mid-run, 404 on re-run) |
+| Gemini-3-Flash (preview) | Gemini | attempted | — | — | free-tier 429s + local DNS flake — no valid trials (archived, resume-safe) |
 
 ```mermaid
 xychart-beta
     title "Overall pass rate — 10 tasks, all trials (higher is better)"
     x-axis ["DeepSeek-V4-Pro", "Qwen3.8-27B", "Qwen2.5-7B", "Qwen2.5-3B"]
     y-axis "Pass rate %" 0 --> 100
-    bar [80, 70, 50, 20]
+    bar [77, 70, 50, 20]
 ```
 
 ### What the numbers show about model limitations
@@ -197,8 +197,8 @@ xychart-beta
    one dropped the CLI entrypoint entirely (exit 0, zero output on a stdin case),
    others produced wrong results. Black-box cases catch what the visible unittest
    cannot.
-3. **Frontier ≠ safe from recklessness.** DeepSeek-V4-Pro passed every executed
-   repair (12/12) yet still fell for a third of the calibration traps — patches
+3. **Frontier ≠ safe from recklessness.** DeepSeek-V4-Pro passed 11 of 12 executed
+   repairs (92%) yet still fell for a third of the calibration traps — patches
    applied where the right answer was "this bug report does not match the code".
 4. **Everything above traces to raw transcripts** — including the failed probes
    (Groq removed `llama-3.3-70b`/`gpt-oss-120b`/`llama-3.1-8b` mid-run; archived in
