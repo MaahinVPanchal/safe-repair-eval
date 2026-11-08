@@ -137,6 +137,55 @@ Scenario = one experimental configuration (the subject model); trials within a
 scenario are independent temperature-0 repeats. Between-scenario change notes:
 `tools/scenario_changes.json`.
 
+## Results — what we tried and which model performed better
+
+Five model configurations probed across the same 10 tasks (every trial: temperature 0,
+raw transcript saved before grading, graded by the trusted grader; repairs executed in
+the Daytona cloud sandbox):
+
+| Model | Provider | Trials | Overall pass | Repairs (sandbox-executed) | Trap calibration |
+|---|---|---|---:|---:|---:|
+| **DeepSeek-V4-Pro** | Nebius | 3 × 10 | **24/30 (80%)** | **12/12 (100%)** | 12/18 (67%) |
+| **Qwen3.8-27B** | Groq | 3 × 10 | **21/30 (70%)** | 9/12 (75%) | 12/18 (67%) |
+| Qwen2.5-Coder-7B | local | 1 × 10 | 5/10 (50%) | 1/4 (25%) | 4/6 (67%) |
+| Qwen2.5-Coder-3B | local | 7 × 10 | 14/70 (20%) | 7/28 (25%) | 7/42 (17%) |
+| Llama-3.1-8B | Groq | — | probes errored | — | — (model removed from Groq mid-run) |
+| Gemini-3-Flash (preview) | Gemini | in progress | — | — | — |
+
+```mermaid
+xychart-beta
+    title "Overall pass rate — 10 tasks, all trials (higher is better)"
+    x-axis ["DeepSeek-V4-Pro", "Qwen3.8-27B", "Qwen2.5-7B", "Qwen2.5-3B"]
+    y-axis "Pass rate %" 0 --> 100
+    bar [80, 70, 50, 20]
+```
+
+### What the numbers show about model limitations
+
+1. **Calibration does not scale with size the way coding does.** DeepSeek-V4-Pro and
+   Qwen3.8-27B tie on trap calibration (67%), despite one being a frontier reasoning
+   model and the other a mid-size Qwen. Meanwhile the 3B coder collapses to 17% —
+   it patches everything it is handed.
+2. **"Fixes" that pass the visible test but break the program are common.** With
+   repairs now executing in the sandbox, the 3B's task05 fix passed all 7 trials —
+   while its repairs on tasks 01/04/06 **ran and failed with real runtime behavior**:
+   one dropped the CLI entrypoint entirely (exit 0, zero output on a stdin case),
+   others produced wrong results. Black-box cases catch what the visible unittest
+   cannot.
+3. **Frontier ≠ safe from recklessness.** DeepSeek-V4-Pro passed every executed
+   repair (12/12) yet still fell for a third of the calibration traps — patches
+   applied where the right answer was "this bug report does not match the code".
+4. **Everything above traces to raw transcripts** — including the failed probes
+   (Groq removed `llama-3.3-70b`/`gpt-oss-120b`/`llama-3.1-8b` mid-run; archived in
+   `transcripts/archive-errored*`, documented in `results/HOSTED_NOTES.md`).
+
+What we tried along the way: two Groq models gated mid-run (403), one OpenRouter
+free-tier model rejecting minimal requests (400), Gemini ids rotated (solved by
+listing `/v1beta/openai/models`), Cloudflare blocking python-urllib's default
+user-agent (fixed with a proper UA header), free-tier 429 bursts and transient DNS
+failures (fixed with retry + exponential backoff and 1.5s call pacing). All of it
+is handled inside the harness so a re-run is one command.
+
 ## Evidence and probing doctrine
 
 Evidence below is filled only by `harness/offline_grade.py` from real saved transcripts, with trial
