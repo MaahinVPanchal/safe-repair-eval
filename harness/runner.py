@@ -46,16 +46,26 @@ def chat_completion_with_retry(base_url, api_key, model, prompt, timeout_s=120,
                 retry_after = e.headers.get("Retry-After") if e.headers else None
                 wait = float(retry_after) if (retry_after or "").replace(".", "").isdigit() \
                     else delays[min(attempt, len(delays) - 1)]
-                print("  retry %d/%d after %ss (%s)" % (attempt + 1, max_attempts, wait, e.code), flush=True)
+                safe_print("  retry %d/%d after %ss (%s)" % (attempt + 1, max_attempts, wait, e.code), flush=True)
                 time.sleep(wait)
                 continue
             raise
         except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
             last_exc = e
             wait = delays[min(attempt, len(delays) - 1)]
-            print("  retry %d/%d after %ss (%s)" % (attempt + 1, max_attempts, wait, type(e).__name__), flush=True)
+            safe_print("  retry %d/%d after %ss (%s)" % (attempt + 1, max_attempts, wait, type(e).__name__), flush=True)
             time.sleep(wait)
     raise last_exc
+
+
+def safe_print(*args, **kwargs):
+    """print() that never raises: on Windows a selected/frozen console
+    (QuickEdit) makes stdout writes fail with OSError 22 - a console must
+    never abort a probe run."""
+    try:
+        print(*args, **kwargs)
+    except OSError:
+        pass
 
 
 def _slug(model):
@@ -76,7 +86,7 @@ def chat_completion(base_url, api_key, model, prompt, timeout_s=120):
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0,
-        "max_tokens": 8192,
+        "max_tokens": 16384,
     }
     req = urllib.request.Request(
         url,
@@ -117,7 +127,7 @@ def probe(tasks, base_url, api_key, model, out_dir, trials=1,
                         progress({"kind": "skip", "task": task["id"], "trial": i})
                     except Exception:
                         pass
-                print("skip existing %s" % os.path.relpath(out_path))
+                safe_print("skip existing %s" % os.path.relpath(out_path))
                 continue
             if progress:
                 try:
@@ -166,7 +176,7 @@ def probe(tasks, base_url, api_key, model, out_dir, trials=1,
             # (QuickEdit) blocks stdout writes - a frozen console must never
             # kill a probe run
             try:
-                print("saved %s (%s)" % (os.path.relpath(out_path), record["error"] or "ok"), flush=True)
+                safe_print("saved %s (%s)" % (os.path.relpath(out_path), record["error"] or "ok"), flush=True)
             except OSError:
                 pass
             time.sleep(1.5)  # gentle pacing between calls - free tiers rate-limit bursts
