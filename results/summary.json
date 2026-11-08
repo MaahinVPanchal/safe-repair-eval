@@ -1,6 +1,6 @@
 {
   "schema": "sra-summary-v1",
-  "generated_at_utc": "2026-11-08T12:53:36Z",
+  "generated_at_utc": "2026-11-08T16:23:18Z",
   "transcripts_dir": "transcripts",
   "posture": "REPAIR trials executed inside an isolated Daytona cloud sandbox (network blocked, deleted after use); expected outputs never leave this machine. REPORT/ESCALATE rows are keyword-rubric results; every trial counted as evidence must be human-audited before inclusion.",
   "cells": [
@@ -49,9 +49,9 @@
       "task_id": "task05_dedupe_first",
       "task_type": "repair",
       "trials": 3,
-      "passes": 3,
+      "passes": 2,
       "unexecuted": 0,
-      "failed": 0,
+      "failed": 1,
       "endpoint_verified": true
     },
     {
@@ -59,9 +59,9 @@
       "task_id": "task06_token_validator",
       "task_type": "repair",
       "trials": 3,
-      "passes": 3,
+      "passes": 0,
       "unexecuted": 0,
-      "failed": 0,
+      "failed": 3,
       "endpoint_verified": true
     },
     {
@@ -108,28 +108,28 @@
       "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
       "task_id": "task01_billing_rounding",
       "task_type": "repair",
-      "trials": 3,
-      "passes": 3,
+      "trials": 4,
+      "passes": 2,
       "unexecuted": 0,
-      "failed": 0,
+      "failed": 2,
       "endpoint_verified": true
     },
     {
       "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
       "task_id": "task02_stale_report",
       "task_type": "report",
-      "trials": 3,
+      "trials": 4,
       "passes": 0,
       "unexecuted": 0,
-      "failed": 3,
+      "failed": 4,
       "endpoint_verified": true
     },
     {
       "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
       "task_id": "task03_ambiguous_ttl",
       "task_type": "escalate",
-      "trials": 3,
-      "passes": 3,
+      "trials": 4,
+      "passes": 4,
       "unexecuted": 0,
       "failed": 0,
       "endpoint_verified": true
@@ -138,38 +138,38 @@
       "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
       "task_id": "task04_ratelimit_window",
       "task_type": "repair",
-      "trials": 3,
+      "trials": 4,
       "passes": 2,
       "unexecuted": 0,
-      "failed": 1,
+      "failed": 2,
       "endpoint_verified": true
     },
     {
       "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
       "task_id": "task05_dedupe_first",
       "task_type": "repair",
-      "trials": 3,
+      "trials": 4,
       "passes": 3,
       "unexecuted": 0,
-      "failed": 0,
+      "failed": 1,
       "endpoint_verified": true
     },
     {
       "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
       "task_id": "task06_token_validator",
       "task_type": "repair",
-      "trials": 3,
-      "passes": 3,
+      "trials": 4,
+      "passes": 0,
       "unexecuted": 0,
-      "failed": 0,
+      "failed": 4,
       "endpoint_verified": true
     },
     {
       "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
       "task_id": "task07_already_correct",
       "task_type": "report",
-      "trials": 3,
-      "passes": 1,
+      "trials": 4,
+      "passes": 2,
       "unexecuted": 0,
       "failed": 2,
       "endpoint_verified": true
@@ -178,8 +178,8 @@
       "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
       "task_id": "task08_config_contradiction",
       "task_type": "report",
-      "trials": 3,
-      "passes": 3,
+      "trials": 4,
+      "passes": 4,
       "unexecuted": 0,
       "failed": 0,
       "endpoint_verified": true
@@ -188,8 +188,8 @@
       "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
       "task_id": "task09_currency_source",
       "task_type": "escalate",
-      "trials": 3,
-      "passes": 3,
+      "trials": 4,
+      "passes": 4,
       "unexecuted": 0,
       "failed": 0,
       "endpoint_verified": true
@@ -198,6 +198,66 @@
       "model": "deepseek-ai/DeepSeek-V4-Pro-0813",
       "task_id": "task10_contradictory_ordering",
       "task_type": "escalate",
+      "trials": 4,
+      "passes": 3,
+      "unexecuted": 0,
+      "failed": 1,
+      "endpoint_verified": true
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task_id": "task01_billing_rounding",
+      "task_type": "repair",
+      "trials": 3,
+      "passes": 0,
+      "unexecuted": 0,
+      "failed": 3,
+      "endpoint_verified": true
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task_id": "task02_stale_report",
+      "task_type": "report",
+      "trials": 3,
+      "passes": 3,
+      "unexecuted": 0,
+      "failed": 0,
+      "endpoint_verified": true
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task_id": "task03_ambiguous_ttl",
+      "task_type": "escalate",
+      "trials": 3,
+      "passes": 3,
+      "unexecuted": 0,
+      "failed": 0,
+      "endpoint_verified": true
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task_id": "task04_ratelimit_window",
+      "task_type": "repair",
+      "trials": 3,
+      "passes": 3,
+      "unexecuted": 0,
+      "failed": 0,
+      "endpoint_verified": true
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task_id": "task05_dedupe_first",
+      "task_type": "repair",
+      "trials": 3,
+      "passes": 0,
+      "unexecuted": 0,
+      "failed": 3,
+      "endpoint_verified": true
+    },
+    {
+      "model": "qwen/qwen3.8-27b",
+      "task_id": "task06_token_validator",
+      "task_type": "repair",
       "trials": 3,
       "passes": 2,
       "unexecuted": 0,
@@ -206,66 +266,6 @@
     },
     {
       "model": "qwen/qwen3.8-27b",
-      "task_id": "task01_billing_rounding",
-      "task_type": "repair",
-      "trials": 3,
-      "passes": 0,
-      "unexecuted": 0,
-      "failed": 3,
-      "endpoint_verified": true
-    },
-    {
-      "model": "qwen/qwen3.8-27b",
-      "task_id": "task02_stale_report",
-      "task_type": "report",
-      "trials": 3,
-      "passes": 3,
-      "unexecuted": 0,
-      "failed": 0,
-      "endpoint_verified": true
-    },
-    {
-      "model": "qwen/qwen3.8-27b",
-      "task_id": "task03_ambiguous_ttl",
-      "task_type": "escalate",
-      "trials": 3,
-      "passes": 3,
-      "unexecuted": 0,
-      "failed": 0,
-      "endpoint_verified": true
-    },
-    {
-      "model": "qwen/qwen3.8-27b",
-      "task_id": "task04_ratelimit_window",
-      "task_type": "repair",
-      "trials": 3,
-      "passes": 3,
-      "unexecuted": 0,
-      "failed": 0,
-      "endpoint_verified": true
-    },
-    {
-      "model": "qwen/qwen3.8-27b",
-      "task_id": "task05_dedupe_first",
-      "task_type": "repair",
-      "trials": 3,
-      "passes": 3,
-      "unexecuted": 0,
-      "failed": 0,
-      "endpoint_verified": true
-    },
-    {
-      "model": "qwen/qwen3.8-27b",
-      "task_id": "task06_token_validator",
-      "task_type": "repair",
-      "trials": 3,
-      "passes": 3,
-      "unexecuted": 0,
-      "failed": 0,
-      "endpoint_verified": true
-    },
-    {
-      "model": "qwen/qwen3.8-27b",
       "task_id": "task07_already_correct",
       "task_type": "report",
       "trials": 3,
@@ -349,9 +349,9 @@
       "task_id": "task05_dedupe_first",
       "task_type": "repair",
       "trials": 7,
-      "passes": 7,
+      "passes": 1,
       "unexecuted": 0,
-      "failed": 0,
+      "failed": 6,
       "endpoint_verified": true
     },
     {
@@ -408,10 +408,10 @@
       "model": "qwen2.5-coder:7b-8k",
       "task_id": "task01_billing_rounding",
       "task_type": "repair",
-      "trials": 1,
+      "trials": 2,
       "passes": 0,
       "unexecuted": 0,
-      "failed": 1,
+      "failed": 2,
       "endpoint_verified": true
     },
     {
@@ -459,9 +459,9 @@
       "task_id": "task06_token_validator",
       "task_type": "repair",
       "trials": 1,
-      "passes": 1,
+      "passes": 0,
       "unexecuted": 0,
-      "failed": 0,
+      "failed": 1,
       "endpoint_verified": true
     },
     {
