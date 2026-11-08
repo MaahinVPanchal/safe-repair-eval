@@ -42,6 +42,37 @@ def sandbox_available():
     return bool(load_env_keys().get("DAYTONA_API_KEY"))
 
 
+# Free tiers cap concurrent sandboxes and deny API deletes - so we keep ONE
+# warm sandbox per process: create on demand, fall back to restarting an
+# existing stopped one when the cap blocks creation, reuse across trials.
+_POOL = {"sandbox": None}
+
+
+def _get_sandbox(daytona, create_params):
+    sb = _POOL.get("sandbox")
+    if sb is not None:
+        return sb
+    try:
+        sb = daytona.create(create_params)
+        _POOL["sandbox"] = sb
+        return sb
+    except Exception as e:
+        if "limit" not in str(e).lower():
+            raise
+        for existing in daytona.list():
+            try:
+                daytona.start(existing)
+                _POOL["sandbox"] = existing
+                return existing
+            except Exception:
+                continue
+        raise
+
+
+def _invalidate():
+    _POOL["sandbox"] = None
+
+
 def run_with_sandbox(task, parsed):
     """Executor interface for grader.grade(): (task, parsed) -> (ok, detail).
 
@@ -56,11 +87,11 @@ def run_with_sandbox(task, parsed):
     try:
         from daytona import Daytona, DaytonaConfig
         try:
-            from daytona import CreateSandboxParams
-            create_params = CreateSandboxParams(language="python", network_block_all=True)
+            # installed SDK: language-based default snapshot, network blocked
+            from daytona import CreateSandboxFromSnapshotParams as CreateParams
         except ImportError:
-            from daytona import CreateSandboxFromImageParams
-            create_params = CreateSandboxFromImageParams(language="python", network_block_all=True)
+            from daytona import CreateSandboxFromImageParams as CreateParams
+        create_params = CreateParams(language="python", network_block_all=True)
     except ImportError:
         return False, "sandbox error: daytona SDK not installed (pip install daytona)"
 
@@ -68,7 +99,7 @@ def run_with_sandbox(task, parsed):
     sandbox = None
     try:
         daytona = Daytona(DaytonaConfig(api_key=api_key))
-        sandbox = daytona.create(create_params)
+        sandbox = _get_sandbox(daytona, create_params)
 
         home = sandbox.get_user_home_dir() or "/home/daytona"
         base = home.rstrip("/") + "/eval"
@@ -109,17 +140,16 @@ def run_with_sandbox(task, parsed):
             try:
                 got = json.loads(out)
             except ValueError:
-                return False, "case %d output not serialized JSON" % i
+                if not out:
+                    return False, "case %d produced no output on stdin case (CLI entrypoint missing or silent?)" % i
+                return False, "case %d output not serialized JSON (got: %r)" % (i, out[:120])
             if got != case["expected"]:
                 return False, "case %d mismatch: got %r expected %r" % (i, got, case["expected"])
 
-        return True, "repair passes visible + hidden black-box cases inside Daytona sandbox (network blocked, deleted after)"
+        return True, "repair passes visible + hidden black-box cases inside Daytona sandbox (network blocked, sandbox kept warm for reuse)"
 
     except Exception as exc:
+        _invalidate()  # a dead sandbox must not poison the pool
         return False, "sandbox error: %s: %s" % (type(exc).__name__, exc)
     finally:
-        if sandbox is not None:
-            try:
-                sandbox.delete()
-            except Exception:
-                pass  # auto-stop reclaims it even if delete fails
+        sandbox = None  # kept warm (auto-stops when idle); delete is denied on free tier
