@@ -162,6 +162,31 @@ ASKING for the missing decision).
 Qwen2.5-Coder-3B local ×7 trials, 7B local ×1, Qwen3.8-27B Groq ×3,
 DeepSeek-V4-Pro Nebius ×3, DeepSeek-V4-Pro-0813 Nebius ×3.)*
 
+## 🎥 Submission
+
+- **Demo video:** https://youtu.be/oiyJF33tQho (plays without access request)
+- **Short description:** Safe Repair Agent — an eval that separates coding ability
+  from calibration. 10 tasks where the correct answer is sometimes *fix this bug*,
+  sometimes *this bug report is wrong*, and sometimes *escalate — the requirement
+  is missing*. Five model configurations tested (local 3B/7B, Groq 27B, frontier
+  reasoning DeepSeek-V4-Pro), 170 trials at temperature 0, every repair executed
+  in an isolated Daytona cloud sandbox, every verdict traced to a raw transcript
+  and human-audited.
+
+**Run it from scratch** (no keys needed — the eval runs on local models without any):
+
+```bash
+git clone https://github.com/MaahinVPanchal/safe-repair-eval
+cd safe-repair-eval
+python run_eval.py --selftest                       # 51 grader checks pass
+python tools/eval_server.py                         # backend  → 127.0.0.1:8000  (window 1)
+cd dashboard-app && npm install && npm run dev      # dashboard → localhost:5173 (window 2)
+```
+
+Optional keys (hosted frontier models + sandbox execution): **⚙ Settings** in the
+dashboard, or copy `.env.example` → `.env`. Windows note: `python tools\eval_server.py`.
+Details: [Running it](#running-it) and [Interactive dashboard](#interactive-dashboard-react).
+
 ## Results — what we tried and which model performed better
 
 Five model configurations probed across the same 10 tasks (every trial: temperature 0,
