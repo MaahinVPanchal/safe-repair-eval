@@ -124,6 +124,19 @@ Every colored cell in those rows opens this same inspector.
 
 ---
 
+## 4:45–5:00 alt — Repo tour (if you have 15 spare seconds)
+
+**Screen:** README → "Repo layout — every folder explained" section.
+
+**Say:**
+> "Every folder is annotated in the README: `tasks` is the eval and never talks
+> to a model; `graders` is the judge plus the Daytona executor; `harness` runs
+> and saves evidence before grading; `transcripts` is every probe verbatim,
+> failures archived too; `results` is the scoreboard, the provider-failure log
+> and the human audit; `dashboard-app` is the UI you just watched. The full
+> annotated tree is in the README — and the adversarial audit that scored the
+> early version 61/100 is in docs, with every finding fixed on camera tonight."
+
 ## Shot list (quick reference)
 
 | Time | Screen | Action |
@@ -138,6 +151,7 @@ Every colored cell in those rows opens this same inspector.
 | 4:15 | Inspector audit block → click Confirm | show ✓ recorded |
 | 4:25 | GitHub → human_audit_log.json | show entry |
 | 4:35 | Terminal: selftest 51/51 | end card |
+| (alt) | README Repo layout section | one line per folder |
 
 ## Numbers on screen (memorize / have visible)
 

@@ -282,19 +282,68 @@ endpoints.
   evidence. Only the harness pattern (runner + transcript saving + offline grading)
   and the self-test discipline carried over; this package was written fresh.
 
-## Repo layout
+## Repo layout — every folder explained
 
 ```
-tasks/       10 task JSONs (grader-side; contains ground truth, never sent to models)
-graders/     trusted grader half + sandbox-refusal posture
-harness/     prompt builder, probe runner, offline grader
-tests/       grader self-tests + reference fixtures
-docs/        video outline + static scenario dashboard (python tools/build_dashboard.py)
-tools/       data exporters + between-scenario change log (scenario_changes.json)
-dashboard-app/  React dashboard (npm run dev; data via tools/export_dashboard_json.py)
-run_eval.py  one-command entrypoint
-results/     graded summaries (appears after first offline grading)
-transcripts/ raw probe transcripts (appear after first probe)
+safe-repair-eval/
+├── tasks/                     THE EVAL — 10 task JSONs: brief, inlined repo
+│                              files, hidden black-box cases, protected paths,
+│                              key patterns. Ground truth lives here and is
+│                              NEVER sent to a model.
+├── graders/                   THE JUDGE
+│   ├── grader.py                trusted half: parse → policy checks (protected
+│   │                            paths, diff budget, imports, secrets) →
+│   │                            sandbox execution → black-box compare. Never
+│   │                            trusts the model's own claims.
+│   └── sandbox_daytona.py       untrusted-code executor: runs repairs in an
+│                              isolated Daytona cloud sandbox (network blocked,
+│                              expected outputs absent, warm-pool reuse, free-
+│                              tier safe). Honest refusal without a key.
+├── harness/                   THE RUNNER
+│   ├── prompt_builder.py        assembles the single-shot prompt (brief + repo
+│   │                            + contract) — smoke-tested to leak no ground truth
+│   ├── runner.py                probe runner: sends, saves raw transcripts
+│   │                            BEFORE grading, retries with backoff
+│   │                            (429s / DNS / 5xx), paces calls
+│   └── offline_grade.py         grades saved transcripts; writes summary.json
+│                              + evidence_table.md
+├── transcripts/               THE EVIDENCE — every probe verbatim: full prompt
+│   │                          (with sha256), full response, latency, tokens,
+│   │                          errors. 140 valid trials.
+│   ├── archive-errored/         failed probes kept, not hidden (gated models,
+│   │                            429 bursts, DNS flakes)
+│   └── archive-errored-429/     the rate-limit batch, same rule
+├── results/                   THE SCOREBOARD
+│   ├── summary.json             per-model per-task graded cells
+│   ├── evidence_table.md        generated markdown table
+│   ├── HOSTED_NOTES.md          provider failures + model-rotation log
+│   └── human_audit_log.json     human audit entries (one per reviewed verdict)
+├── registry/
+│   └── evals.yaml             task registry in the openai/evals spirit
+├── tools/
+│   ├── eval_server.py           live backend for the dashboard (127.0.0.1 only):
+│   │                            run scenarios, stream progress, audit + creds
+│   ├── export_dashboard_json.py graded snapshot for the UI
+│   ├── build_dashboard.py       static dashboard fallback builder
+│   ├── make_submission_zip.py   builds the leak-checked submission ZIP
+│   └── scenario_changes.json    what changed between scenarios (honest ladder)
+├── dashboard-app/             THE UI — React + Tailwind v4: pipeline view, live
+│   │                          terminal, inspector modal, audit buttons, ⚙ settings
+│   └── public/data.json        graded snapshot the UI renders
+├── docs/
+│   ├── video_outline.md         the recording script (shot list + narration)
+│   ├── dashboard.html           static dashboard fallback (no server needed)
+│   └── micro1_hackathon_eval_audit_report.md
+│                              adversarial self-audit: scored the pre-fix state
+│                              61/100; the frontier-evidence, sandbox-execution,
+│                              audit-log and executive-metrics gaps are closed
+│                              here — the remaining single-shot / keyword-rubric
+│                              limits are documented, not hidden
+├── tests/                     51 grader self-checks + known-good fixtures
+├── run_eval.py                CLI: --selftest | --probe | --offline
+├── start.bat                  double-click launcher (server + dashboard + browser)
+├── .env.example               every optional key documented (keys NEVER committed)
+└── safe-repair-eval-submission.zip   built by tools/make_submission_zip.py
 ```
 
 ## License
