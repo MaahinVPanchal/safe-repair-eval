@@ -65,12 +65,18 @@ def _slug(model):
 
 
 def chat_completion(base_url, api_key, model, prompt, timeout_s=120):
-    """One chat completion. Returns (text, usage, latency_seconds)."""
+    """One chat completion. Returns (text, usage, latency_seconds).
+
+    max_tokens is set generously: thinking/reasoning models need room to
+    finish before the provider's default cutoff truncates them mid-reasoning
+    (a truncated response has no VERDICT line and grades as a contract
+    violation — not the model's fault)."""
     url = base_url.rstrip("/") + "/chat/completions"
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0,
+        "max_tokens": 8192,
     }
     req = urllib.request.Request(
         url,
@@ -156,7 +162,13 @@ def probe(tasks, base_url, api_key, model, out_dir, trials=1,
                 except Exception:
                     pass
             saved.append(out_path)
-            print("saved %s (%s)" % (os.path.relpath(out_path), record["error"] or "ok"), flush=True)
+            # console-safe: on Windows, selecting text in the server's terminal
+            # (QuickEdit) blocks stdout writes - a frozen console must never
+            # kill a probe run
+            try:
+                print("saved %s (%s)" % (os.path.relpath(out_path), record["error"] or "ok"), flush=True)
+            except OSError:
+                pass
             time.sleep(1.5)  # gentle pacing between calls - free tiers rate-limit bursts
     return saved
 

@@ -123,9 +123,22 @@ def run_with_sandbox(task, parsed):
                                    "%s/cases/case%02d.json" % (base, i))
 
         entry = task["entrypoint"].replace("\\", "/")
+
+        # evidence integrity: the warm sandbox persists across trials — stale
+        # __pycache__ bytecode from a previous trial's DIFFERENT repair could
+        # serve wrong code. Wipe it before every case run.
+        sandbox.process.exec(
+            "find '%s' -depth -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null; true" % base,
+            timeout=20,
+        )
+
         for i, case in enumerate(cases):
             resp = sandbox.process.exec(
-                "cd '%s' && python '%s' < cases/case%02d.json" % (base, entry, i),
+                # -B: never write bytecode — near-identical repairs across
+                # trials could otherwise be served stale __pycache__ from a
+                # previous trial (mtime+size invalidation can tie on
+                # same-second uploads). Determinism over micro-speed.
+                "cd '%s' && python -B '%s' < cases/case%02d.json" % (base, entry, i),
                 timeout=25,
             )
             exit_code = getattr(resp, "exit_code", None)

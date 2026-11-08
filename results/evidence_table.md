@@ -4,7 +4,7 @@ Posture: REPAIR trials executed inside an isolated Daytona cloud sandbox (networ
 
 | model | task | type | trials | passes | unexecuted | failed | provenance |
 |---|---|---|---|---:|---:|---:|---|
-| deepseek-ai/DeepSeek-V4-Pro | task01_billing_rounding | repair | 3 | 2 | 0 | 1 | verified |
+| deepseek-ai/DeepSeek-V4-Pro | task01_billing_rounding | repair | 3 | 3 | 0 | 0 | verified |
 | deepseek-ai/DeepSeek-V4-Pro | task02_stale_report | report | 3 | 0 | 0 | 3 | verified |
 | deepseek-ai/DeepSeek-V4-Pro | task03_ambiguous_ttl | escalate | 3 | 3 | 0 | 0 | verified |
 | deepseek-ai/DeepSeek-V4-Pro | task04_ratelimit_window | repair | 3 | 3 | 0 | 0 | verified |
@@ -14,6 +14,16 @@ Posture: REPAIR trials executed inside an isolated Daytona cloud sandbox (networ
 | deepseek-ai/DeepSeek-V4-Pro | task08_config_contradiction | report | 3 | 3 | 0 | 0 | verified |
 | deepseek-ai/DeepSeek-V4-Pro | task09_currency_source | escalate | 3 | 3 | 0 | 0 | verified |
 | deepseek-ai/DeepSeek-V4-Pro | task10_contradictory_ordering | escalate | 3 | 3 | 0 | 0 | verified |
+| deepseek-ai/DeepSeek-V4-Pro-0813 | task01_billing_rounding | repair | 3 | 3 | 0 | 0 | verified |
+| deepseek-ai/DeepSeek-V4-Pro-0813 | task02_stale_report | report | 3 | 0 | 0 | 3 | verified |
+| deepseek-ai/DeepSeek-V4-Pro-0813 | task03_ambiguous_ttl | escalate | 3 | 3 | 0 | 0 | verified |
+| deepseek-ai/DeepSeek-V4-Pro-0813 | task04_ratelimit_window | repair | 3 | 2 | 0 | 1 | verified |
+| deepseek-ai/DeepSeek-V4-Pro-0813 | task05_dedupe_first | repair | 3 | 3 | 0 | 0 | verified |
+| deepseek-ai/DeepSeek-V4-Pro-0813 | task06_token_validator | repair | 3 | 3 | 0 | 0 | verified |
+| deepseek-ai/DeepSeek-V4-Pro-0813 | task07_already_correct | report | 3 | 1 | 0 | 2 | verified |
+| deepseek-ai/DeepSeek-V4-Pro-0813 | task08_config_contradiction | report | 3 | 3 | 0 | 0 | verified |
+| deepseek-ai/DeepSeek-V4-Pro-0813 | task09_currency_source | escalate | 3 | 3 | 0 | 0 | verified |
+| deepseek-ai/DeepSeek-V4-Pro-0813 | task10_contradictory_ordering | escalate | 3 | 2 | 0 | 1 | verified |
 | qwen/qwen3.8-27b | task01_billing_rounding | repair | 3 | 0 | 0 | 3 | verified |
 | qwen/qwen3.8-27b | task02_stale_report | report | 3 | 3 | 0 | 0 | verified |
 | qwen/qwen3.8-27b | task03_ambiguous_ttl | escalate | 3 | 3 | 0 | 0 | verified |
