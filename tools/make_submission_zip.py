@@ -6,7 +6,7 @@ Verifies contents before reporting.
 import os
 import zipfile
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'safe-repair-eval-submission.zip')
 EXCLUDE_DIRS = {'.git', 'node_modules', '__pycache__', '.rebuild', '.smoke'}
 EXCLUDE_FILES = {'.env', 'safe-repair-eval-submission.zip'}
