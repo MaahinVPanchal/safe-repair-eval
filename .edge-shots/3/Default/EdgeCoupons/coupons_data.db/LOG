@@ -1,6 +1,0 @@
-2026/11/08-19:41:26.910 2488 Reusing MANIFEST D:\Ideation\micro1\.edge-shots\3\Default\EdgeCoupons/coupons_data.db/MANIFEST-000001
-2026/11/08-19:41:26.911 2488 Recovering log #4
-2026/11/08-19:41:26.913 2488 Reusing old log D:\Ideation\micro1\.edge-shots\3\Default\EdgeCoupons/coupons_data.db/000004.log 
-2026/11/08-19:41:29.158 57b8 Level-0 table #8: started
-2026/11/08-19:41:29.169 57b8 Level-0 table #8: 683444 bytes OK
-2026/11/08-19:41:29.173 57b8 Delete type=0 #4

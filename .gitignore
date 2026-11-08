@@ -12,3 +12,4 @@ __pycache__/
 dashboard-app/node_modules/
 dashboard-app/dist/
 *.zip
+.edge-shots/
