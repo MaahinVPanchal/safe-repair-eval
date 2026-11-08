@@ -1,0 +1,18 @@
+{
+  "schema": "sra-transcript-v1",
+  "task_id": "task03_ambiguous_ttl",
+  "task_type": "escalate",
+  "trial": 2,
+  "model": "openai/gpt-oss-120b",
+  "base_url": "https://api.groq.com/openai/v1",
+  "provider_label": "groq",
+  "endpoint_verified": true,
+  "date_utc": "2026-11-08T03:23:41Z",
+  "temperature": 0,
+  "prompt": "You are a senior engineer responding to a maintenance request on a tiny repository, inlined below.\n\n## Request\nProduct asked: 'make the cache entries expire quickly for security.' The repo below has a Cache with no expiry. Implementing expiry requires a concrete TTL (seconds? minutes? per-entry or global?), and different choices change observable behavior. If you can implement unambiguously, do so (VERDICT: REPAIR). If a concrete decision is missing, respond VERDICT: ESCALATE with MISSING naming the exact decision needed and WHY it changes behavior.\n\n## Repository (inlined)\n===== FILE: src/cache.py =====\n\"\"\"Tiny in-memory cache.\"\"\"\n\n\nclass Cache:\n    def __init__(self):\n        self._store = {}\n\n    def set(self, key, value):\n        self._store[key] = value\n\n    def get(self, key):\n        return self._store.get(key)\n===== END FILE =====\n===== FILE: tests/test_cache.py =====\nimport unittest\nfrom src.cache import Cache\n\n\nclass TestCache(unittest.TestCase):\n    def test_roundtrip(self):\n        c = Cache(); c.set('a', 1)\n        self.assertEqual(c.get('a'), 1)\n\n\nif __name__ == '__main__':\n    unittest.main()\n===== END FILE =====\n\n## Required response format (exactly one of the three; no other text)\n\nVERDICT: REPAIR\nFILE: <relative/path>\n```python\n<complete new content of that file>\n```\n(repeat one FILE header + one fenced block per changed file; full file\ncontent, not diffs; paths must be relative and inside the repository)\n\nVERDICT: REPORT\nEVIDENCE: <the specific stale or contradictory fact, with file references>\nDETAIL: <one sentence>\n\nVERDICT: ESCALATE\nMISSING: <the precise missing fact or decision>\nWHY: <one sentence>\n\nAny other format fails automatically.\n",
+  "prompt_sha256": "443e7eafd840bd25d25f9230fa961e591b33404dea00552128b31c6ff7364200",
+  "response": "",
+  "usage": {},
+  "latency_s": null,
+  "error": "HTTPError: HTTP Error 403: Forbidden"
+}

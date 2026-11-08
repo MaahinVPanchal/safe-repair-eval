@@ -30,6 +30,34 @@ from harness.prompt_builder import build_prompt, load_tasks  # noqa: E402
 TRANSCRIPT_SCHEMA = "sra-transcript-v1"
 
 
+def chat_completion_with_retry(base_url, api_key, model, prompt, timeout_s=120,
+                               max_attempts=6):
+    """chat_completion with exponential backoff for free-tier conditions:
+    429 rate limits (honors Retry-After), 5xx, remote disconnects and
+    transient DNS failures. Permanent 4xx (400/403/404) raise immediately."""
+    delays = [2, 5, 15, 30, 60]
+    last_exc = None
+    for attempt in range(max_attempts):
+        try:
+            return chat_completion(base_url, api_key, model, prompt, timeout_s=timeout_s)
+        except urllib.error.HTTPError as e:
+            last_exc = e
+            if e.code in (429, 500, 502, 503, 529):
+                retry_after = e.headers.get("Retry-After") if e.headers else None
+                wait = float(retry_after) if (retry_after or "").replace(".", "").isdigit() \
+                    else delays[min(attempt, len(delays) - 1)]
+                print("  retry %d/%d after %ss (%s)" % (attempt + 1, max_attempts, wait, e.code), flush=True)
+                time.sleep(wait)
+                continue
+            raise
+        except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
+            last_exc = e
+            wait = delays[min(attempt, len(delays) - 1)]
+            print("  retry %d/%d after %ss (%s)" % (attempt + 1, max_attempts, wait, type(e).__name__), flush=True)
+            time.sleep(wait)
+    raise last_exc
+
+
 def _slug(model):
     """Filesystem-safe slug for a model id, used in transcript filenames."""
     out = "".join(ch if (ch.isalnum() or ch in "._-") else "-" for ch in model)
@@ -49,6 +77,7 @@ def chat_completion(base_url, api_key, model, prompt, timeout_s=120):
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
+            "User-Agent": "safe-repair-eval/1.0 (+https://github.com/MaahinVPanchal/safe-repair-eval)",
             "Authorization": "Bearer %s" % api_key,
         },
         method="POST",
@@ -108,7 +137,8 @@ def probe(tasks, base_url, api_key, model, out_dir, trials=1,
                 "error": "",
             }
             try:
-                text, usage, latency = chat_completion(base_url, api_key, model, prompt)
+                text, usage, latency = chat_completion_with_retry(
+                    base_url, api_key, model, prompt)
                 record.update({
                     "response": text,
                     "usage": usage,
@@ -126,7 +156,8 @@ def probe(tasks, base_url, api_key, model, out_dir, trials=1,
                 except Exception:
                     pass
             saved.append(out_path)
-            print("saved %s (%s)" % (os.path.relpath(out_path), record["error"] or "ok"))
+            print("saved %s (%s)" % (os.path.relpath(out_path), record["error"] or "ok"), flush=True)
+            time.sleep(1.5)  # gentle pacing between calls - free tiers rate-limit bursts
     return saved
 
 

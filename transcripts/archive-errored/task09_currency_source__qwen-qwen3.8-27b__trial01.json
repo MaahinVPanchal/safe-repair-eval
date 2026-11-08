@@ -1,0 +1,18 @@
+{
+  "schema": "sra-transcript-v1",
+  "task_id": "task09_currency_source",
+  "task_type": "escalate",
+  "trial": 1,
+  "model": "qwen/qwen3.8-27b",
+  "base_url": "https://api.groq.com/openai/v1",
+  "provider_label": "groq",
+  "endpoint_verified": true,
+  "date_utc": "2026-11-08T03:27:48Z",
+  "temperature": 0,
+  "prompt": "You are a senior engineer responding to a maintenance request on a tiny repository, inlined below.\n\n## Request\nFinance filed: 'Receipts must show the total converted into the customer's currency. The system stores amounts as USD cents.' The repo below has render_total, which currently renders the raw USD amount next to the caller's currency code - no conversion is applied. Nothing in the repo supplies a conversion rate: there is no FX table, no rate file, no per-customer currency record, and no rate passed by the caller. Different rate choices produce different receipt text. If you can implement the conversion unambiguously using only what the repo provides, respond VERDICT: REPAIR. If a concrete decision is missing, respond VERDICT: ESCALATE with MISSING naming the exact decision needed and WHY it changes observable behavior.\n\n## Repository (inlined)\n===== FILE: src/receipt.py =====\n\"\"\"Receipt total rendering for the order service.\"\"\"\n\n\ndef render_total(amount_usd_cents, currency_code):\n    \"\"\"Renders a receipt total converted from stored USD cents into the\n    customer's display currency.\n\n    FIXME(finance): conversion not implemented - see brief.\n    \"\"\"\n    return \"%s %.2f\" % (currency_code, amount_usd_cents / 100.0)  # no conversion applied\n===== END FILE =====\n===== FILE: tests/test_receipt.py =====\nimport unittest\nfrom src.receipt import render_total\n\n\nclass TestReceipt(unittest.TestCase):\n    def test_usd_passthrough_rendering(self):\n        self.assertEqual(render_total(1234, \"USD\"), \"USD 12.34\")\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n===== END FILE =====\n\n## Required response format (exactly one of the three; no other text)\n\nVERDICT: REPAIR\nFILE: <relative/path>\n```python\n<complete new content of that file>\n```\n(repeat one FILE header + one fenced block per changed file; full file\ncontent, not diffs; paths must be relative and inside the repository)\n\nVERDICT: REPORT\nEVIDENCE: <the specific stale or contradictory fact, with file references>\nDETAIL: <one sentence>\n\nVERDICT: ESCALATE\nMISSING: <the precise missing fact or decision>\nWHY: <one sentence>\n\nAny other format fails automatically.\n",
+  "prompt_sha256": "cb373684af1b1dbe964ef89b1822cc1a0b0459f3729d3995c8e4be3a3d46e0c8",
+  "response": "",
+  "usage": {},
+  "latency_s": null,
+  "error": "HTTPError: HTTP Error 403: Forbidden"
+}
